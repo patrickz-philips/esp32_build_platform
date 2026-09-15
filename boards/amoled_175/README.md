@@ -28,7 +28,8 @@ expansion header by the official hardware reference. Internal flash/PSRAM pins
 and unrouted pins are intentionally omitted.
 
 **Direction:** `In` = input, `Out` = output, `I/O` = bidirectional.  
-**Source:** `[HW]` = [official hardware reference][hw].
+**Source:** `[HW]` = [official hardware reference][hw]; `[USER]` = explicit
+project wiring supplied for the external light ring and button.
 
 ### System, Storage, and USB
 
@@ -72,9 +73,9 @@ and unrouted pins are intentionally omitted.
 | 8 | `I2S_DOUT` | ES8311 codec | I2S | Out | Playback data | [HW] |
 | 9 | `I2S_BCLK/SCLK` | ES8311 + ES7210 | I2S | Out | Shared TX/RX clock | [HW] |
 | 10 | `I2S_DIN/ASDOUT` | ES7210 ADC | I2S/TDM | In | Four-slot capture | [HW] |
-| 16 | `GPIO16` | Header pin 8 | GPIO | I/O | Not audio MCLK | [HW] |
+| 16 | `LIGHTRING_DATA` | External WS2812 ring | RMT | Out | Used by `lightring_button` | [USER] |
 | 17 | `GPIO17` | Header pin 6 | GPIO/UART | I/O | `-G`: LC76G RX route | [HW] |
-| 18 | `GPIO18` | Header pin 7 | GPIO/UART | I/O | `-G`: LC76G TX route | [HW] |
+| 18 | `BUTTON` | External button | GPIO | In | Active low; `-G`: LC76G TX conflict | [USER] |
 | 42 | `I2S_MCLK` | ES8311 + ES7210 | I2S | Out | Shared master clock | [HW] |
 | 43 | `U0TXD` | Header pin 5 | UART0 | Out | May carry console output | [HW] |
 | 44 | `U0RXD` | Header pin 4 | UART0 | In | May be used by console | [HW] |
@@ -112,6 +113,8 @@ API. The TCA9554 also routes power, PMU, IMU, RTC, and optional GNSS signals.
 | ES7210 ADC | I2C `0x40`, I2S/TDM | N/A | 9, 10, 14, 15, 42, 45 | Microphone input |
 | microSD | 1-bit SDMMC | No CD/WP | 1, 2, 3, 41 | Removable storage |
 | LC76G (`-G` only) | I2C `0x50`/`0x54` | TCA9554 P7 RST | 14, 15, 17, 18 | Optional GNSS |
+| WS2812 ring | RMT | 27 LEDs, GRB wire order | 16 | External status lighting |
+| Button | GPIO | Active-low input with pull-up | 18 | External light-ring control |
 
 The ES7210 captures two onboard microphones and the playback reference. GPIO41
 is wired to microSD but unused by the current mount code. LC76G is absent from
@@ -127,6 +130,7 @@ The source of truth is [supported_apps.txt](supported_apps.txt).
 | `salary_cat` | Supported | Uses BSP display, touch, SD, ES8311 audio, TCA9554 initialization, and AXP2101 PMU APIs |
 | `acc_data` | Supported | Uses the common BSP display API and active LVGL resolution; haptic output is disabled, so GPIO18 remains available to expansion/GNSS |
 | `battery_monitor` | Incompatible | Current app uses the 2.06-specific display config structure |
+| `lightring_button` | Supported | Uses external WS2812 data on GPIO16 and an active-low button on GPIO18; no display or LVGL |
 
 These are project integration limits, not claims that the physical board lacks
 the PMU, IMU, or audio devices.
@@ -137,6 +141,8 @@ the PMU, IMU, or audio devices.
 - Partition table: 8 MB factory app and 7 MB SPIFFS storage.
 - PSRAM: octal mode at 80 MHz from the common sdkconfig defaults.
 - Salary Cat enables the LVGL GIF decoder through its app sdkconfig defaults.
+- Light Ring Button uses the app-owned Espressif RMT LED strip driver and does
+  not initialize the display.
 - The display keeps the BSP communication frequency and uses the BSP's 50-row
   PSRAM double-buffer profile; this project does not override the QSPI clock.
 - Salary Cat initializes the BSP-owned TCA9554 before creating the ES8311 codec.

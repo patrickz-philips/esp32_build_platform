@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Two-stage selector for the multi-board / multi-app ESP-IDF project.
 #   Step 1: choose the target board.
-#   Step 2: choose the LVGL application (lvgl/<project> submodule).
+#   Step 2: choose the application.
 # Press 'q' at any prompt to quit, or Enter to keep the current selection.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -12,12 +12,13 @@ BOARD_DESC=(
     "Waveshare ESP32-S3 Touch AMOLED 2.06\""
     "Waveshare ESP32-S3 Touch LCD 1.28\" (round, IMU-only)"
 )
-PROJECTS=(slide_player salary_cat acc_data battery_monitor)
+PROJECTS=(slide_player salary_cat acc_data battery_monitor lightring_button)
 PROJ_DESC=(
     "PNG slideshow (touch gestures)"
     "Salary cat (GIF + MP3 from SD)"
     "Accelerometer logger (IMU + PMU)"
     "Battery / PMU monitor (AXP2101)"
+    "WS2812 light ring + button"
 )
 
 read_cur() { if [ -f "$1" ]; then tr -d '[:space:]' <"$1"; else printf '%s' "$2"; fi; }
@@ -81,9 +82,9 @@ if ! is_app_compatible "$project"; then
     echo "  '$cur_proj' is incompatible with $board; defaulting to '$project'."
 fi
 
-# --- Step 2: lvgl project ---------------------------------------------------
+# --- Step 2: application ----------------------------------------------------
 echo
-echo "Step 2/2 - Select lvgl project (current: $cur_proj)"
+echo "Step 2/2 - Select application (current: $cur_proj)"
 for i in "${!PROJECTS[@]}"; do
     app_label="${PROJECTS[$i]}"
     is_app_compatible "${PROJECTS[$i]}" || app_label="$app_label (Incompatible)"

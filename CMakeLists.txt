@@ -26,7 +26,7 @@ function(resolve_selection var file default)
 endfunction()
 
 set(SUPPORTED_BOARDS amoled_175 amoled_206 touch_lcd_1_28)
-set(SUPPORTED_PROJECTS slide_player salary_cat acc_data battery_monitor)
+set(SUPPORTED_PROJECTS slide_player salary_cat acc_data battery_monitor lightring_button)
 
 resolve_selection(BOARD "${CMAKE_CURRENT_LIST_DIR}/.board" amoled_175)
 resolve_selection(LVGL_PROJECT "${CMAKE_CURRENT_LIST_DIR}/.lvgl_project" slide_player)

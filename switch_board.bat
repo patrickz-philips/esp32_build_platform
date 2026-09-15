@@ -10,15 +10,17 @@ set "BOARD_DESC_1=Waveshare ESP32-S3 Touch AMOLED 1.75\""
 set "BOARD_DESC_2=Waveshare ESP32-S3 Touch AMOLED 2.06\""
 set "BOARD_DESC_3=Waveshare ESP32-S3 Touch LCD 1.28\" (round, IMU-only)"
 
-set "PROJECT_COUNT=4"
+set "PROJECT_COUNT=5"
 set "PROJECT_1=slide_player"
 set "PROJECT_2=salary_cat"
 set "PROJECT_3=acc_data"
 set "PROJECT_4=battery_monitor"
+set "PROJECT_5=lightring_button"
 set "PROJ_DESC_1=PNG slideshow (touch gestures)"
 set "PROJ_DESC_2=Salary cat (GIF + MP3 from SD)"
 set "PROJ_DESC_3=Accelerometer logger (IMU + PMU)"
 set "PROJ_DESC_4=Battery / PMU monitor (AXP2101)"
+set "PROJ_DESC_5=WS2812 light ring + button"
 
 if exist ".board" (
     set /p "cur_board="<".board"
@@ -92,9 +94,9 @@ if errorlevel 1 (
     echo   '!cur_proj!' is incompatible with !board!; defaulting to '!project!'.
 )
 
-rem --- Step 2: lvgl project ------------------------------------------------
+rem --- Step 2: application -------------------------------------------------
 echo.
-echo Step 2/2 - Select lvgl project (current: !cur_proj!)
+echo Step 2/2 - Select application (current: !cur_proj!)
 for /L %%i in (1,1,%PROJECT_COUNT%) do (
     set "mark=  "
     if /I "!PROJECT_%%i!"=="!project!" set "mark==>"

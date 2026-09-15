@@ -50,7 +50,8 @@ The project is organized as a small layered application:
 |   |-- app_acc_data/             # acc_data entry, IMU, and SD writer
 |   |-- app_salary_cat/           # salary_cat entry and audio adapter
 |   |-- app_slide_player/         # slide_player component migration
-|   `-- app_battery_monitor/      # battery_monitor component migration
+|   |-- app_battery_monitor/      # battery_monitor component migration
+|   `-- app_lightring_button/     # WS2812 ring and button app (no LVGL)
 |-- sdkconfig.defaults            # Common configuration
 `-- sdkconfig.<board>             # Generated per-board config (gitignored)
 ```
@@ -70,13 +71,14 @@ See `main/idf_component.yml` and `dependencies.lock` for exact dependency defini
 
 ## Build and Flash
 
-A build is defined by two independent selections: the **board** (hardware) and the
-**LVGL project** (application). Use the two-stage selector:
+A build is defined by two independent selections: the **board** (hardware) and
+the **application** (stored in the legacy `LVGL_PROJECT` variable). Use the
+two-stage selector:
 
 ```bash
 ./switch_board.sh
 #   Step 1/2 - Select board          (shows current, '=>' marks it)
-#   Step 2/2 - Select lvgl project   (shows current)
+#   Step 2/2 - Select application    (shows current)
 #   Enter = keep current, q = quit
 ```
 
@@ -100,11 +102,12 @@ Both `BOARD` and `LVGL_PROJECT` resolve in the same priority order:
 | `amoled_175` | Waveshare ESP32-S3 Touch AMOLED 1.75" |
 | `amoled_206` | Waveshare ESP32-S3 Touch AMOLED 2.06" |
 
-| LVGL project | App | Recommended board |
+| App id | App | Recommended board |
 |--------------|-----|-------------------|
 | `slide_player` | PNG slideshow (gestures) | `amoled_175` |
 | `acc_data` | Accelerometer logger (IMU + PMU) | `amoled_206` |
 | `battery_monitor` | Battery / PMU monitor (AXP2101) | `amoled_206` |
+| `lightring_button` | WS2812 light ring + active-low button | `amoled_175` |
 
 Each board is self-contained under `boards/<board>/`:
 
