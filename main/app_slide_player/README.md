@@ -1,9 +1,11 @@
 # Slide Player App
 
-Displays 32 numbered PNG or animated GIF slides from the SD card. Touch boards
-change slides with horizontal gestures. Non-touch button boards advance on a
-button press and wrap from slide 32 to slide 1. For each number from 1 through
-32, the app loads `/sdcard/<number>.png` first and falls back to
+Displays numbered PNG or animated GIF slides from the SD card. At startup, the
+app scans the SD root and uses the highest numbered file as the slide count.
+Touch boards change slides with horizontal gestures. Non-touch button boards
+advance on a button press and wrap from the highest number to slide 1. For each
+positive integer filename without leading zeroes, the app loads
+`/sdcard/<number>.png` first and falls back to
 `/sdcard/<number>.gif` when the PNG is absent.
 
 ## Required Capabilities
@@ -30,6 +32,7 @@ task, queue, decoder, and SD mount as applicable.
 |:-----|:------|:---------|:---------------|
 | `slide_sd_reader` | 4096 bytes | 4 | Validate the latest requested slide file and post a typed result to the LVGL model |
 | `slide_button` | 2048 bytes | 4 | Debounce the optional board button and request the next slide |
+| `slide_serial` | 3072 bytes | 4 | Read newline-delimited slide commands from the primary console |
 
 The BSP owns the LVGL task. A one-entry overwrite queue coalesces rapid gestures
 so stale slide requests do not accumulate. The UI also drops stale results by
@@ -53,6 +56,19 @@ behavior.
 
 The top-level frame reads the active display resolution and has no BSP header or
 board-specific panel dimensions.
+
+## Serial Control
+
+The primary console accepts one command per line at 115200 baud:
+
+- `next`: show the next slide and wrap at the end.
+- `last`: show the previous slide and wrap at the beginning.
+- Any number up to the highest numbered SD asset: show that slide.
+
+On macOS, double-click `mac-app/slide-player.command` in Finder, or run it with
+an explicit port as `./mac-app/slide-player.command /dev/cu.usbmodemXXXX`. The
+left and right arrow keys send `last` and `next`; enter a number followed by
+Return to open that slide, and press Escape to quit.
 
 ## Device Checks
 

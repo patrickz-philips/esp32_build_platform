@@ -1,10 +1,13 @@
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "board_config.h"
 #include "driver/gpio.h"
@@ -27,10 +30,12 @@
 
 static const char * TAG = "app_slide_player";
 static const char * SLIDE_ASSET_DIR = "A:/sdcard";
-static const uint32_t SLIDE_COUNT = 32U;
 static const uint32_t FIRST_SLIDE_NUMBER = 1U;
 static const uint32_t SD_TASK_STACK_SIZE = 4096U;
 static const UBaseType_t SD_TASK_PRIORITY = 4U;
+static const uint32_t SERIAL_TASK_STACK_SIZE = 3072U;
+static const UBaseType_t SERIAL_TASK_PRIORITY = 4U;
+static const size_t SERIAL_COMMAND_MAX_LEN = 16U;
 #if BOARD_HAS_BUTTON
 static const uint32_t BUTTON_TASK_STACK_SIZE = 2048U;
 static const UBaseType_t BUTTON_TASK_PRIORITY = 4U;
@@ -46,6 +51,8 @@ typedef struct {
 static esp_lv_decoder_handle_t s_decoder_handle;
 static QueueHandle_t s_request_queue;
 static TaskHandle_t s_reader_task_handle;
+static TaskHandle_t s_serial_task_handle;
+static uint32_t s_slide_count;
 #if BOARD_HAS_BUTTON
 static TaskHandle_t s_button_task_handle;
 #endif
@@ -53,6 +60,57 @@ static TaskHandle_t s_button_task_handle;
 static bool display_lock_forever(void)
 {
     return bsp_display_lock(UINT32_MAX) == ESP_OK;
+}
+
+static void slide_serial_task(void * arg)
+{
+    (void)arg;
+
+    char command[SERIAL_COMMAND_MAX_LEN];
+    while (true) {
+        if (fgets(command, sizeof(command), stdin) == NULL) {
+            clearerr(stdin);
+            vTaskDelay(pdMS_TO_TICKS(20U));
+            continue;
+        }
+
+        command[strcspn(command, "\r\n")] = '\0';
+        bool requested = false;
+        if (!display_lock_forever()) {
+            ESP_LOGW(TAG, "Serial command could not lock display");
+            continue;
+        }
+
+        if (strcasecmp(command, "next") == 0) {
+            requested = slide_player_show_next();
+        } else if (strcasecmp(command, "last") == 0) {
+            requested = slide_player_show_previous();
+        } else {
+            char * end = NULL;
+            errno = 0;
+            const unsigned long slide_number = strtoul(command, &end, 10);
+            if (errno == 0 && end != command && *end == '\0' && slide_number <= UINT32_MAX) {
+                requested = slide_player_show_slide((uint32_t)slide_number);
+            } else {
+                ESP_LOGW(TAG, "Unknown serial command: %s", command);
+            }
+        }
+        bsp_display_unlock();
+
+        if (!requested) {
+            ESP_LOGW(TAG, "Serial slide request was rejected: %s", command);
+        }
+    }
+}
+
+static esp_err_t slide_serial_start(void)
+{
+    if (xTaskCreate(slide_serial_task, "slide_serial", SERIAL_TASK_STACK_SIZE, NULL,
+                    SERIAL_TASK_PRIORITY, &s_serial_task_handle) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    ESP_LOGI(TAG, "Serial controls ready: next, last, 1-%u", (unsigned int)s_slide_count);
+    return ESP_OK;
 }
 
 #if BOARD_HAS_BUTTON
@@ -108,13 +166,72 @@ static esp_err_t slide_button_start(void)
 static bool build_slide_path(uint32_t slide_index, const char * extension,
                              char * output, size_t output_size)
 {
-    if (extension == NULL || output == NULL || output_size == 0U || slide_index >= SLIDE_COUNT) {
+    if (extension == NULL || output == NULL || output_size == 0U || slide_index >= s_slide_count) {
         return false;
     }
 
     const int written = snprintf(output, output_size, "%s/%u.%s", SLIDE_ASSET_DIR,
                                  (unsigned int)(slide_index + FIRST_SLIDE_NUMBER), extension);
     return written > 0 && (size_t)written < output_size;
+}
+
+static bool parse_slide_number(const char * filename, uint32_t * slide_number)
+{
+    if (filename == NULL || slide_number == NULL || filename[0] < '1' || filename[0] > '9') {
+        return false;
+    }
+
+    char * extension = NULL;
+    errno = 0;
+    const unsigned long number = strtoul(filename, &extension, 10);
+    if (errno != 0 || number == 0U || number > UINT32_MAX ||
+        (strcmp(extension, ".png") != 0 && strcmp(extension, ".gif") != 0)) {
+        return false;
+    }
+
+    *slide_number = (uint32_t)number;
+    return true;
+}
+
+static esp_err_t detect_slide_count(void)
+{
+    DIR * directory = opendir(BSP_SD_MOUNT_POINT);
+    if (directory == NULL) {
+        ESP_LOGE(TAG, "Failed to scan %s: %s", BSP_SD_MOUNT_POINT, strerror(errno));
+        return ESP_FAIL;
+    }
+
+    uint32_t highest_slide_number = 0U;
+    int scan_error = 0;
+    while (true) {
+        errno = 0;
+        const struct dirent * entry = readdir(directory);
+        if (entry == NULL) {
+            scan_error = errno;
+            break;
+        }
+
+        uint32_t slide_number = 0U;
+        if (parse_slide_number(entry->d_name, &slide_number) &&
+            slide_number > highest_slide_number) {
+            highest_slide_number = slide_number;
+        }
+    }
+    closedir(directory);
+
+    if (scan_error != 0) {
+        ESP_LOGE(TAG, "Failed while scanning %s: %s", BSP_SD_MOUNT_POINT,
+                 strerror(scan_error));
+        return ESP_FAIL;
+    }
+    if (highest_slide_number == 0U) {
+        ESP_LOGE(TAG, "No numbered PNG or GIF slides found in %s", BSP_SD_MOUNT_POINT);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    s_slide_count = highest_slide_number;
+    ESP_LOGI(TAG, "Detected slides 1-%u", (unsigned int)s_slide_count);
+    return ESP_OK;
 }
 
 static bool lvgl_path_to_posix_path(const char * lvgl_path, char * posix_path, size_t posix_path_size)
@@ -303,6 +420,10 @@ static esp_err_t slide_pipeline_start(void)
 
 static void slide_player_runtime_deinit(void)
 {
+    if (s_serial_task_handle != NULL) {
+        vTaskDelete(s_serial_task_handle);
+        s_serial_task_handle = NULL;
+    }
 #if BOARD_HAS_BUTTON
     if (s_button_task_handle != NULL) {
         vTaskDelete(s_button_task_handle);
@@ -340,6 +461,12 @@ static esp_err_t slide_player_runtime_init(void)
     }
     ESP_LOGI(TAG, "SD card mounted at %s", BSP_SD_MOUNT_POINT);
 
+    ret = detect_slide_count();
+    if (ret != ESP_OK) {
+        bsp_sdcard_unmount();
+        return ret;
+    }
+
     ret = esp_lv_decoder_init(&s_decoder_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "LVGL decoder init failed: %s", esp_err_to_name(ret));
@@ -359,12 +486,6 @@ static esp_err_t slide_player_runtime_init(void)
 
 void app_main(void)
 {
-    const slide_player_model_t model = {
-        .slide_count = SLIDE_COUNT,
-        .request_slide = request_slide_load,
-        .user_ctx = NULL,
-    };
-
     if (bsp_display_start() == NULL) {
         ESP_LOGE(TAG, "Display initialization failed");
         return;
@@ -381,20 +502,32 @@ void app_main(void)
         return;
     }
 
-    const esp_err_t ui_ret = slide_player_ui_init(&model);
-    if (ui_ret != ESP_OK) {
-        ESP_LOGE(TAG, "UI initialization failed: %s", esp_err_to_name(ui_ret));
+    const slide_player_model_t model = {
+        .slide_count = s_slide_count,
+        .request_slide = request_slide_load,
+        .user_ctx = NULL,
+    };
+    esp_err_t control_ret = slide_player_ui_init(&model);
+    if (control_ret != ESP_OK) {
+        ESP_LOGE(TAG, "UI initialization failed: %s", esp_err_to_name(control_ret));
         slide_player_runtime_deinit();
     }
 #if BOARD_HAS_BUTTON
     else {
-        const esp_err_t button_ret = slide_button_start();
-        if (button_ret != ESP_OK) {
-            ESP_LOGE(TAG, "Button initialization failed: %s", esp_err_to_name(button_ret));
+        control_ret = slide_button_start();
+        if (control_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Button initialization failed: %s", esp_err_to_name(control_ret));
             slide_player_runtime_deinit();
         }
     }
 #endif
+    if (control_ret == ESP_OK) {
+        control_ret = slide_serial_start();
+        if (control_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Serial control initialization failed: %s", esp_err_to_name(control_ret));
+            slide_player_runtime_deinit();
+        }
+    }
 
     bsp_display_unlock();
 }

@@ -113,9 +113,13 @@ running. Background SD probes also drain the LCD queue before accessing files.
 | `lightring_button` | Incompatible | Requires an on-board WS2812 light ring |
 
 On this non-touch board, a debounced GPIO9 press advances to the next numbered
-PNG/GIF slide. Pressing on slide 32 wraps to slide 1. If the requested PNG and
-GIF are both unavailable, the same GPIO9 request immediately falls back to
-slide 1. Touch-capable boards keep their existing left/right gesture behavior.
+PNG/GIF slide. Pressing on the highest numbered slide wraps to slide 1. If the
+requested PNG and GIF are both unavailable, the same GPIO9 request immediately
+falls back to slide 1. Touch-capable boards keep their existing left/right
+gesture behavior.
+
+The primary console uses the native USB Serial/JTAG port at 115200 baud and
+accepts `next`, `last`, or a slide number up to the highest numbered SD asset.
 
 ## Build Configuration
 
@@ -134,4 +138,4 @@ slide 1. Touch-capable boards keep their existing left/right gesture behavior.
 The build cannot verify physical behavior. Confirm display orientation, GRAM
 offset, RGB/BGR order, inversion, backlight polarity, SD stability while the LCD
 is refreshing, GPIO9 debounce, PNG/GIF rendering, GIF animation memory, and
-slide 32-to-1 wrap-around on the board.
+highest-slide-to-1 wrap-around on the board.

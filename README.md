@@ -135,12 +135,16 @@ sources from `lvgl/<project>/`.
 ## Slide Asset Requirements
 
 - Place slide images on SD card under `/sdcard`.
-- Use numbered `.png` or `.gif` files from `1` through `32`; PNG takes
+- Use positive integer filenames without leading zeroes and with a `.png` or
+  `.gif` extension. The highest numbered file defines the slide count; PNG takes
   precedence when both formats exist for the same number.
 - Touch behavior:
   - Swipe left: next slide
   - Swipe right: previous slide
-- On `esp32_c6_lcd_0_96`, press GPIO9 to advance; slide 32 wraps to slide 1.
+- On `esp32_c6_lcd_0_96`, press GPIO9 to advance; the highest slide wraps to slide 1.
+- Serial control accepts `next`, `last`, or a slide number followed by Enter.
+  On macOS, double-click `mac-app/slide-player.command` to map the arrow keys and
+  numeric input to these commands.
 
 ## Current Design Notes
 
@@ -153,6 +157,5 @@ sources from `lvgl/<project>/`.
 ## Future Improvement Ideas
 
 - Add rollback cleanup if any runtime init step fails.
-- Replace hardcoded slide count with SD directory scan.
 - Move machine-specific `.vscode` settings to user-local config.
 - Reduce global warning suppression and scope it to specific files only.
