@@ -42,14 +42,15 @@ static bool display_lock_forever(void)
     return bsp_display_lock(UINT32_MAX) == ESP_OK;
 }
 
-static bool build_slide_path(uint32_t slide_index, char * output, size_t output_size)
+static bool build_slide_path(uint32_t slide_index, const char * extension,
+                             char * output, size_t output_size)
 {
-    if (output == NULL || output_size == 0U || slide_index >= SLIDE_COUNT) {
+    if (extension == NULL || output == NULL || output_size == 0U || slide_index >= SLIDE_COUNT) {
         return false;
     }
 
-    const int written = snprintf(output, output_size, "%s/%u.png", SLIDE_ASSET_DIR,
-                                 (unsigned int)(slide_index + FIRST_SLIDE_NUMBER));
+    const int written = snprintf(output, output_size, "%s/%u.%s", SLIDE_ASSET_DIR,
+                                 (unsigned int)(slide_index + FIRST_SLIDE_NUMBER), extension);
     return written > 0 && (size_t)written < output_size;
 }
 
@@ -75,6 +76,8 @@ static bool lvgl_path_to_posix_path(const char * lvgl_path, char * posix_path, s
 
 static bool probe_slide_file(slide_player_load_result_t * result)
 {
+    result->error_no = 0;
+
     char posix_path[SLIDE_PLAYER_IMAGE_PATH_MAX_LEN];
     if (!lvgl_path_to_posix_path(result->image_path, posix_path, sizeof(posix_path))) {
         result->error_no = ENAMETOOLONG;
@@ -131,6 +134,11 @@ static void slide_reader_task(void * arg)
         };
         memcpy(result.image_path, request.image_path, sizeof(result.image_path));
         result.success = probe_slide_file(&result);
+        if (!result.success && result.error_no == ENOENT &&
+            build_slide_path(result.slide_index, "gif", result.image_path,
+                             sizeof(result.image_path))) {
+            result.success = probe_slide_file(&result);
+        }
 
         if (!result.success) {
             ESP_LOGW(TAG, "[%u] SD read failed path=%s errno=%d (%s)",
@@ -155,7 +163,7 @@ static bool request_slide_load(uint32_t slide_index, uint32_t request_id, void *
         .request_id = request_id,
         .slide_index = slide_index,
     };
-    if (!build_slide_path(slide_index, request.image_path, sizeof(request.image_path))) {
+    if (!build_slide_path(slide_index, "png", request.image_path, sizeof(request.image_path))) {
         ESP_LOGE(TAG, "[%u] Failed to build path for slide %u", (unsigned int)request_id,
                  (unsigned int)(slide_index + 1U));
         return false;
@@ -167,8 +175,8 @@ static bool request_slide_load(uint32_t slide_index, uint32_t request_id, void *
         return false;
     }
 
-    ESP_LOGI(TAG, "[%u] Queued slide=%u path=%s", (unsigned int)request_id,
-             (unsigned int)(slide_index + 1U), request.image_path);
+    ESP_LOGI(TAG, "[%u] Queued slide=%u", (unsigned int)request_id,
+             (unsigned int)(slide_index + 1U));
     return true;
 }
 

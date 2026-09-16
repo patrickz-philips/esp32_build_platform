@@ -1,8 +1,9 @@
 # Slide Player App
 
-Displays 32 numbered PNG slides from the SD card and changes slides with
-horizontal touch gestures. Slides must be available as `/sdcard/1.png` through
-`/sdcard/32.png`.
+Displays 32 numbered PNG or animated GIF slides from the SD card and changes
+slides with horizontal touch gestures. For each number from 1 through 32, the
+app loads `/sdcard/<number>.png` first and falls back to
+`/sdcard/<number>.gif` when the PNG is absent.
 
 ## Required Capabilities
 
@@ -18,8 +19,9 @@ dependency is `espressif/esp_lv_decoder` 0.4.x.
 
 Initialization starts the BSP display, mounts the SD card, initializes the LVGL
 PNG decoder, creates the one-entry request queue and SD reader task, then creates
-the UI while holding the BSP display lock. A required failure stops later stages
-and rolls back the task, queue, decoder, and SD mount as applicable.
+the UI while holding the BSP display lock. LVGL's native GIF widget is enabled
+through `sdkconfig.app`. A required failure stops later stages and rolls back the
+task, queue, decoder, and SD mount as applicable.
 
 ## Task Model
 
@@ -45,5 +47,6 @@ board-specific panel dimensions.
 ## Device Checks
 
 Builds validate component wiring only. On each board, verify SD mount behavior,
-PNG decoding, left/right gestures, boundary handling, rapid gesture coalescing,
-missing-file recovery, and full-screen layout.
+PNG and GIF decoding, animation playback, left/right gestures, boundary
+handling, rapid gesture coalescing, missing-file recovery, and full-screen
+layout.
