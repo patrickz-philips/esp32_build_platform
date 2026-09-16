@@ -1,0 +1,28 @@
+#pragma once
+
+#define BOARD_NAME "Spotpear ESP32-C6-LCD-0.96"
+
+#define BOARD_HAS_SD     1
+#define BOARD_HAS_TOUCH  0
+#define BOARD_HAS_BUTTON 1
+#define BOARD_HAS_AUDIO  0
+#define BOARD_HAS_IMU    0
+#define BOARD_HAS_PMU    0
+#define BOARD_HAS_RTC    0
+#define BOARD_HAS_HAPTIC 0
+
+#define BOARD_FEATURE_SLIDE_PLAYER 1
+
+#define BOARD_LCD_SCLK_GPIO 7
+#define BOARD_LCD_MOSI_GPIO 6
+#define BOARD_LCD_MISO_GPIO 5
+#define BOARD_LCD_CS_GPIO   14
+#define BOARD_LCD_DC_GPIO   15
+#define BOARD_LCD_RST_GPIO  21
+#define BOARD_LCD_BL_GPIO   3
+#define BOARD_SD_CS_GPIO    4
+#define BOARD_BUTTON_GPIO   9
+#define BOARD_BUTTON_ACTIVE_LEVEL 0
+
+#define BOARD_LCD_H_RES 160
+#define BOARD_LCD_V_RES 80

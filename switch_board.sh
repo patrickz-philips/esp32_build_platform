@@ -6,15 +6,16 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-BOARDS=(amoled_175 amoled_206 touch_lcd_1_28)
+BOARDS=(amoled_175 amoled_206 touch_lcd_1_28 esp32_c6_lcd_0_96)
 BOARD_DESC=(
     "Waveshare ESP32-S3 Touch AMOLED 1.75\""
     "Waveshare ESP32-S3 Touch AMOLED 2.06\""
     "Waveshare ESP32-S3 Touch LCD 1.28\" (round, IMU-only)"
+    "Spotpear ESP32-C6 LCD 0.96\" (button + SD)"
 )
 PROJECTS=(slide_player salary_cat acc_data battery_monitor lightring_button)
 PROJ_DESC=(
-    "PNG slideshow (touch gestures)"
+    "PNG/GIF slideshow (touch or button)"
     "Salary cat (GIF + MP3 from SD)"
     "Accelerometer logger (IMU + PMU)"
     "Battery / PMU monitor (AXP2101)"
@@ -112,6 +113,20 @@ done
 
 printf '%s\n' "$board" >.board
 printf '%s\n' "$project" >.lvgl_project
+build_dir="build/${board}_${project}"
+
+python3 - "$build_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+build_dir = sys.argv[1]
+for filename in (".vscode/settings.json", ".vscode/settings_mac.json"):
+    path = Path(filename)
+    settings = json.loads(path.read_text())
+    settings["idf.buildPath"] = "${workspaceFolder}/" + build_dir
+    path.write_text(json.dumps(settings, indent=2) + "\n")
+PY
 
 # Each app's entry point lives in main/app_<project>/app_<project>.c
 app_entry="main/app_${project}/app_${project}.c"
@@ -122,6 +137,5 @@ echo "Selected: board=$board  project=$project"
 echo "App entry: $app_entry"
 echo "(.board / .lvgl_project updated - they are the single source of truth)"
 echo
-echo "Build:           idf.py build"
-echo "Flash & monitor: idf.py -p <PORT> flash monitor"
-echo "Or just use the VS Code ESP-IDF 'Build' button (shared build/ dir)."
+echo "Build:           idf.py -B $build_dir build"
+echo "Flash & monitor: idf.py -B $build_dir -p <PORT> flash monitor"

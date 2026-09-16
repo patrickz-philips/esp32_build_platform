@@ -25,7 +25,7 @@ function(resolve_selection var file default)
     set(${var} "${want}" CACHE STRING "" FORCE)
 endfunction()
 
-set(SUPPORTED_BOARDS amoled_175 amoled_206 touch_lcd_1_28)
+set(SUPPORTED_BOARDS amoled_175 amoled_206 touch_lcd_1_28 esp32_c6_lcd_0_96)
 set(SUPPORTED_PROJECTS slide_player salary_cat acc_data battery_monitor lightring_button)
 
 resolve_selection(BOARD "${CMAKE_CURRENT_LIST_DIR}/.board" amoled_175)
@@ -80,6 +80,14 @@ elseif(BOARD STREQUAL "touch_lcd_1_28")
     # This board owns its BSP: the board component compiles bsp/ directly, so it
     # is its own BSP component (no vendor package on the ESP Component Registry).
     set(SELECTED_BSP_COMPONENT "touch_lcd_1_28")
+elseif(BOARD STREQUAL "esp32_c6_lcd_0_96")
+    set(SELECTED_BSP_COMPONENT "esp32_c6_lcd_0_96")
+endif()
+
+if(BOARD STREQUAL "esp32_c6_lcd_0_96")
+    set(IDF_TARGET "esp32c6" CACHE STRING "ESP-IDF target" FORCE)
+else()
+    set(IDF_TARGET "esp32s3" CACHE STRING "ESP-IDF target" FORCE)
 endif()
 
 # Export BOARD_HAS_SD so app components can drop SD-only sources and the sdmmc
@@ -114,8 +122,8 @@ set(EXTRA_COMPONENT_DIRS "${BOARD_DIR}" "${APP_DIR}")
 
 # Per-board generated config + layered defaults (board file overrides common).
 set(SDKCONFIG "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.${BOARD}")
-set(SDKCONFIG_DEFAULTS
-    "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults;${BOARD_DIR}/sdkconfig.board")
+set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults")
+list(APPEND SDKCONFIG_DEFAULTS "${BOARD_DIR}/sdkconfig.board")
 if(EXISTS "${APP_DIR}/sdkconfig.app")
     list(APPEND SDKCONFIG_DEFAULTS "${APP_DIR}/sdkconfig.app")
 endif()

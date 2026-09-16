@@ -5,7 +5,6 @@
   ],
   "idf.portWin": "COM3",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3",
     "ESP_ROM_ELF_DIR": "C:\\Espressif\\tools\\esp-rom-elfs\\20241011",
     "HTTP_PROXY": "http://185.46.212.97:10015",
     "HTTPS_PROXY": "http://185.46.212.97:10015",
@@ -16,6 +15,7 @@
     "OPENOCD_USB_ADAPTER_LOCATION": "2-5"
   },
   "idf.flashType": "UART",
+  "idf.buildPathWin": "${workspaceFolder}\\build\\esp32_c6_lcd_0_96_slide_player",
   "cmake.generator": "Ninja",
   "cmake.cmakePath": "C:\\Espressif\\tools\\cmake\\3.30.2\\bin\\cmake.exe",
   "cmake.configureOnOpen": false,
@@ -23,7 +23,6 @@
   "cmake.buildDirectory": "${workspaceFolder}/.cmake-tools-build",
   "cmake.configureEnvironment": {
     "IDF_PATH": "C:\\Espressif\\frameworks\\esp-idf-v5.5.4",
-    "IDF_TARGET": "esp32s3",
     "ESP_ROM_ELF_DIR": "C:\\Espressif\\tools\\esp-rom-elfs\\20241011",
     "PATH": "C:\\Espressif\\tools\\xtensa-esp-elf\\esp-14.2.0_20260121\\xtensa-esp-elf\\bin;C:\\Espressif\\tools\\ninja\\1.12.1;${env:PATH}"
   },

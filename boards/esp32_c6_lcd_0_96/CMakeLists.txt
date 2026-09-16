@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "bsp/display.c"
+        "bsp/sdcard.c"
+    INCLUDE_DIRS
+        "."
+        "bsp"
+    REQUIRES
+        lvgl__lvgl
+    PRIV_REQUIRES
+        esp_driver_gpio
+        esp_driver_ledc
+        esp_driver_spi
+        esp_lcd
+        espressif__esp_lvgl_port
+        fatfs
+        waveshare__esp_lcd_st7735)

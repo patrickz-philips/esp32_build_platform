@@ -5,6 +5,7 @@ sdkconfig.old
 # Per-board generated sdkconfig files (source of truth: sdkconfig.defaults + boards/<board>/sdkconfig.board)
 /sdkconfig.amoled_175
 /sdkconfig.amoled_206
+/sdkconfig.esp32_c6_lcd_0_96
 # Local board selection written by switch_board.sh
 /.board
 /.lvgl_project

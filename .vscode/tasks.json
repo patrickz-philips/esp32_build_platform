@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ESP-IDF: Build selected board/app",
+      "type": "shell",
+      "command": ". \"${config:idf.currentSetup}/export.sh\" >/dev/null && board=$(tr -d '[:space:]' < .board) && app=$(tr -d '[:space:]' < .lvgl_project) && idf.py -B \"build/${board}_${app}\" build",
+      "windows": {
+        "command": "call \"${config:idf.currentSetup}\\export.bat\" && for /f \"usebackq delims=\" %b in (\".board\") do for /f \"usebackq delims=\" %a in (\".lvgl_project\") do idf.py -B \"build\\%b_%a\" build"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

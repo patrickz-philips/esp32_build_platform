@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "board_config.h"
+#include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_lv_decoder.h"
@@ -16,8 +17,12 @@
 #include "freertos/task.h"
 #include "slide_player.h"
 
-#if !BOARD_HAS_SD || !BOARD_HAS_TOUCH || !BOARD_FEATURE_SLIDE_PLAYER
-#error "slide_player requires a compatible board with touch and SD storage"
+#ifndef BOARD_HAS_BUTTON
+#define BOARD_HAS_BUTTON 0
+#endif
+
+#if !BOARD_HAS_SD || (!BOARD_HAS_TOUCH && !BOARD_HAS_BUTTON) || !BOARD_FEATURE_SLIDE_PLAYER
+#error "slide_player requires SD storage and touch or button input"
 #endif
 
 static const char * TAG = "app_slide_player";
@@ -26,6 +31,11 @@ static const uint32_t SLIDE_COUNT = 32U;
 static const uint32_t FIRST_SLIDE_NUMBER = 1U;
 static const uint32_t SD_TASK_STACK_SIZE = 4096U;
 static const UBaseType_t SD_TASK_PRIORITY = 4U;
+#if BOARD_HAS_BUTTON
+static const uint32_t BUTTON_TASK_STACK_SIZE = 2048U;
+static const UBaseType_t BUTTON_TASK_PRIORITY = 4U;
+static const uint32_t BUTTON_DEBOUNCE_MS = 30U;
+#endif
 
 typedef struct {
     uint32_t request_id;
@@ -36,11 +46,64 @@ typedef struct {
 static esp_lv_decoder_handle_t s_decoder_handle;
 static QueueHandle_t s_request_queue;
 static TaskHandle_t s_reader_task_handle;
+#if BOARD_HAS_BUTTON
+static TaskHandle_t s_button_task_handle;
+#endif
 
 static bool display_lock_forever(void)
 {
     return bsp_display_lock(UINT32_MAX) == ESP_OK;
 }
+
+#if BOARD_HAS_BUTTON
+static void slide_button_task(void * arg)
+{
+    (void)arg;
+
+    while (true) {
+        if (gpio_get_level(BOARD_BUTTON_GPIO) != BOARD_BUTTON_ACTIVE_LEVEL) {
+            vTaskDelay(pdMS_TO_TICKS(20U));
+            continue;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
+        if (gpio_get_level(BOARD_BUTTON_GPIO) == BOARD_BUTTON_ACTIVE_LEVEL &&
+            display_lock_forever()) {
+            if (!slide_player_show_next()) {
+                ESP_LOGW(TAG, "Button slide request was rejected");
+            }
+            bsp_display_unlock();
+        }
+
+        while (gpio_get_level(BOARD_BUTTON_GPIO) == BOARD_BUTTON_ACTIVE_LEVEL) {
+            vTaskDelay(pdMS_TO_TICKS(20U));
+        }
+        vTaskDelay(pdMS_TO_TICKS(BUTTON_DEBOUNCE_MS));
+    }
+}
+
+static esp_err_t slide_button_start(void)
+{
+    const gpio_config_t config = {
+        .pin_bit_mask = 1ULL << BOARD_BUTTON_GPIO,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    const esp_err_t ret = gpio_config(&config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure slide button: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    if (xTaskCreate(slide_button_task, "slide_button", BUTTON_TASK_STACK_SIZE, NULL,
+                    BUTTON_TASK_PRIORITY, &s_button_task_handle) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+#endif
 
 static bool build_slide_path(uint32_t slide_index, const char * extension,
                              char * output, size_t output_size)
@@ -212,6 +275,12 @@ static esp_err_t slide_pipeline_start(void)
 
 static void slide_player_runtime_deinit(void)
 {
+#if BOARD_HAS_BUTTON
+    if (s_button_task_handle != NULL) {
+        vTaskDelete(s_button_task_handle);
+        s_button_task_handle = NULL;
+    }
+#endif
     slide_pipeline_stop();
 
     if (s_decoder_handle != NULL) {
@@ -283,6 +352,15 @@ void app_main(void)
         ESP_LOGE(TAG, "UI initialization failed: %s", esp_err_to_name(ui_ret));
         slide_player_runtime_deinit();
     }
+#if BOARD_HAS_BUTTON
+    else {
+        const esp_err_t button_ret = slide_button_start();
+        if (button_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Button initialization failed: %s", esp_err_to_name(button_ret));
+            slide_player_runtime_deinit();
+        }
+    }
+#endif
 
     bsp_display_unlock();
 }

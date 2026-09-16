@@ -2,13 +2,15 @@
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
-set "BOARD_COUNT=3"
+set "BOARD_COUNT=4"
 set "BOARD_1=amoled_175"
 set "BOARD_2=amoled_206"
 set "BOARD_3=touch_lcd_1_28"
+set "BOARD_4=esp32_c6_lcd_0_96"
 set "BOARD_DESC_1=Waveshare ESP32-S3 Touch AMOLED 1.75\""
 set "BOARD_DESC_2=Waveshare ESP32-S3 Touch AMOLED 2.06\""
 set "BOARD_DESC_3=Waveshare ESP32-S3 Touch LCD 1.28\" (round, IMU-only)"
+set "BOARD_DESC_4=Spotpear ESP32-C6 LCD 0.96\" (button + SD)"
 
 set "PROJECT_COUNT=5"
 set "PROJECT_1=slide_player"
@@ -16,7 +18,7 @@ set "PROJECT_2=salary_cat"
 set "PROJECT_3=acc_data"
 set "PROJECT_4=battery_monitor"
 set "PROJECT_5=lightring_button"
-set "PROJ_DESC_1=PNG slideshow (touch gestures)"
+set "PROJ_DESC_1=PNG/GIF slideshow (touch or button)"
 set "PROJ_DESC_2=Salary cat (GIF + MP3 from SD)"
 set "PROJ_DESC_3=Accelerometer logger (IMU + PMU)"
 set "PROJ_DESC_4=Battery / PMU monitor (AXP2101)"
@@ -139,6 +141,15 @@ set "project=!candidate!"
 
 >".board" echo(!board!
 >".lvgl_project" echo(!project!
+set "build_dir=build\!board!_!project!"
+
+for %%f in (".vscode\settings.json" ".vscode\settings_win.json") do (
+    powershell -NoProfile -Command "$path='%%~f'; $settings=Get-Content -Raw $path | ConvertFrom-Json; $settings | Add-Member -NotePropertyName 'idf.buildPathWin' -NotePropertyValue ('${workspaceFolder}\!build_dir!') -Force; $settings | ConvertTo-Json -Depth 20 | Set-Content -Encoding utf8 $path"
+    if errorlevel 1 (
+        echo Failed to update ESP-IDF build path in %%~f
+        exit /b 1
+    )
+)
 
 rem Each app's entry point lives in main/app_<project>/app_<project>.c
 set "app_entry=main\app_!project!\app_!project!.c"
@@ -149,9 +160,8 @@ echo Selected: board=!board!  project=!project!
 echo App entry: !app_entry!
 echo (.board / .lvgl_project updated - they are the single source of truth)
 echo.
-echo Build:           idf.py build
-echo Flash ^& monitor: idf.py -p ^<PORT^> flash monitor
-echo Or just use the VS Code ESP-IDF "Build" button (shared build/ dir).
+echo Build:           idf.py -B !build_dir! build
+echo Flash ^& monitor: idf.py -B !build_dir! -p ^<PORT^> flash monitor
 exit /b 0
 
 :is_number

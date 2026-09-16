@@ -15,6 +15,7 @@ idf_component_register(
 		"."
 		"${SLIDE_PLAYER_UI_DIR}/inc"
 	PRIV_REQUIRES
+		esp_driver_gpio
 		esp_common
 		esp_lv_decoder
 		esp_timer

@@ -5,7 +5,6 @@
   ],
   "idf.port": "/dev/tty.usbmodem1101",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3",
     "HTTP_PROXY": "http://185.46.212.97:10015",
     "HTTPS_PROXY": "http://185.46.212.97:10015",
     "http_proxy": "http://185.46.212.97:10015",
@@ -14,13 +13,13 @@
     "no_proxy": "localhost,127.0.0.1,::1"
   },
   "idf.flashType": "UART",
+  "idf.buildPath": "${workspaceFolder}/build/esp32_c6_lcd_0_96_slide_player",
   "cmake.generator": "Ninja",
   "cmake.configureOnOpen": false,
   "cmake.useCMakePresets": "never",
   "cmake.buildDirectory": "${workspaceFolder}/.cmake-tools-build",
   "cmake.configureEnvironment": {
-    "IDF_PATH": "/Users/patrickz/esp/esp-idf",
-    "IDF_TARGET": "esp32s3"
+    "IDF_PATH": "/Users/patrickz/esp/esp-idf"
   },
   "git.enabled": true,
   "git.autoRepositoryDetection": true,

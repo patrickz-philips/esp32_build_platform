@@ -1,14 +1,15 @@
-# ESP32-S3 LVGL Slide Demo (v9)
+# ESP-IDF Multi-Board LVGL Demos
 
-This project is an ESP-IDF + LVGL demo for the Waveshare ESP32-S3 AMOLED 1.75 board.
-It mounts an SD card, loads PNG slide images at runtime, and switches slides with touch gestures.
+This repository hosts ESP-IDF + LVGL applications for several ESP32-S3 and
+ESP32-C6 display boards. The slide player loads numbered PNG or GIF files from
+micro-SD and supports either touch gestures or a board button.
 
 ## Architecture Overview
 
 The project is organized as a small layered application:
 
 1. Platform layer (BSP and board drivers)
-- Board init and display bring-up are handled by the Waveshare BSP component.
+- Board init and display bring-up are handled by a vendor or project-owned BSP.
 - SD card is mounted over SDSPI.
 
 2. Runtime services
@@ -17,15 +18,15 @@ The project is organized as a small layered application:
 
 3. UI / feature layer (`slide_player`)
 - Creates the LVGL screen and widgets.
-- Handles gesture events (left/right swipe).
-- Builds image paths like `A:/sdcard/1.png` ... `A:/sdcard/32.png`.
+- Handles touch gestures or button-driven advance.
+- Probes numbered PNG files first, then GIF files.
 
 ## Runtime Flow
 
 1. `app_main()` starts board display and acquires the display lock.
 2. `slide_player_runtime_init()` mounts SD card and initializes LVGL decoder.
 3. `slide_player_ui_init()` builds the UI and displays the first slide.
-4. Gesture callback updates slide index and refreshes image source.
+4. A gesture or button press updates the slide index and refreshes the media.
 
 ## Project Structure
 
@@ -35,12 +36,14 @@ The project is organized as a small layered application:
 |-- switch_board.sh               # Two-stage selector (board, then app)
 |-- boards/
 |   |-- amoled_175/               # AMOLED 1.75" board profile
-|   `-- amoled_206/               # AMOLED 2.06" board profile
+|   |-- amoled_206/               # AMOLED 2.06" board profile
+|   |-- touch_lcd_1_28/           # Round LCD board profile
+|   `-- esp32_c6_lcd_0_96/        # ESP32-C6 ST7735 board profile and BSP
 |-- components/
 |   |-- XPowersLib/               # AXP2101 driver
 |   `-- pmu_power/                # Reusable PMU service
 |-- lvgl/                         # LVGL applications (git submodules)
-|   |-- slide_player/             # PNG slideshow
+|   |-- slide_player/             # PNG/GIF slideshow
 |   |-- acc_data/                 # accelerometer logger
 |   |-- salary_cat/               # GIF + MP3 player
 |   `-- battery_monitor/          # battery / PMU monitor
@@ -64,7 +67,7 @@ The `lvgl/*` applications are tracked as git submodules; clone with
 
 - ESP-IDF: `5.5.4`
 - LVGL: `9.4.x`
-- Waveshare board support: `waveshare/esp32_s3_touch_amoled_1_75`
+- Board support: Waveshare BSPs or project-owned board components
 - LVGL decoder: `espressif/esp_lv_decoder`
 
 See `main/idf_component.yml` and `dependencies.lock` for exact dependency definitions.
@@ -85,7 +88,7 @@ two-stage selector:
 It writes `./.board` and `./.lvgl_project`, then prints the ready-to-run commands:
 
 ```bash
-idf.py -DBOARD=amoled_175 -DLVGL_PROJECT=slide_player -B build/amoled_175_slide_player build
+idf.py -B build/amoled_175_slide_player build
 idf.py -B build/amoled_175_slide_player -p <PORT> flash monitor
 ```
 
@@ -93,18 +96,21 @@ Each board+project pair uses its own build directory so configs never mix.
 
 ## Multi-board / Multi-app Support
 
-Both `BOARD` and `LVGL_PROJECT` resolve in the same priority order:
-`-D<VAR>=<name>` -> environment variable -> persisted file (`./.board` /
-`./.lvgl_project`) -> default (`amoled_175` / `slide_player`).
+Both `BOARD` and `LVGL_PROJECT` resolve in the same priority order: environment
+variable -> persisted file (`./.board` / `./.lvgl_project`) -> default
+(`amoled_175` / `slide_player`).
 
 | Board id | Hardware |
 |----------|----------|
 | `amoled_175` | Waveshare ESP32-S3 Touch AMOLED 1.75" |
 | `amoled_206` | Waveshare ESP32-S3 Touch AMOLED 2.06" |
+| `touch_lcd_1_28` | Waveshare ESP32-S3 Touch LCD 1.28" |
+| `esp32_c6_lcd_0_96` | Spotpear ESP32-C6 LCD 0.96" (GPIO9 button, no touch) |
 
 | App id | App | Recommended board |
 |--------------|-----|-------------------|
-| `slide_player` | PNG slideshow (gestures) | `amoled_175` |
+| `slide_player` | PNG/GIF slideshow (touch or button) | `amoled_175`, `esp32_c6_lcd_0_96` |
+| `salary_cat` | GIF + MP3 player | `amoled_206` |
 | `acc_data` | Accelerometer logger (IMU + PMU) | `amoled_206` |
 | `battery_monitor` | Battery / PMU monitor (AXP2101) | `amoled_206` |
 | `lightring_button` | WS2812 light ring + active-low button | `amoled_175` |
@@ -129,16 +135,20 @@ sources from `lvgl/<project>/`.
 ## Slide Asset Requirements
 
 - Place slide images on SD card under `/sdcard`.
-- Current code expects numbered PNG files: `1.png` ... `32.png`.
-- Gesture behavior:
+- Use numbered `.png` or `.gif` files from `1` through `32`; PNG takes
+  precedence when both formats exist for the same number.
+- Touch behavior:
   - Swipe left: next slide
   - Swipe right: previous slide
+- On `esp32_c6_lcd_0_96`, press GPIO9 to advance; slide 32 wraps to slide 1.
 
 ## Current Design Notes
 
-- UI updates are gesture-driven and run on LVGL event callbacks.
+- UI updates run through LVGL callbacks; non-touch button requests take the
+  BSP display lock before changing the slide.
 - Performance logs are emitted on each slide switch to help profile decode and memory usage.
-- Asset C files in `slide_player/assets/*.c` are not compiled by default in the current CMake setup; runtime loading is PNG-from-SD based.
+- Asset C files in `slide_player/assets/*.c` are not compiled by default; media
+  is loaded from SD at runtime.
 
 ## Future Improvement Ideas
 
