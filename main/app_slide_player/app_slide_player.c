@@ -211,6 +211,22 @@ static void slide_reader_task(void * arg)
                                      sizeof(result.image_path))) {
                     result.success = probe_slide_file(&result);
                 }
+#if BOARD_HAS_BUTTON
+                if (!result.success && result.slide_index != 0U) {
+                    ESP_LOGI(TAG, "[%u] Falling back to slide 1",
+                             (unsigned int)result.request_id);
+                    result.slide_index = 0U;
+                    if (build_slide_path(0U, "png", result.image_path,
+                                         sizeof(result.image_path))) {
+                        result.success = probe_slide_file(&result);
+                    }
+                    if (!result.success && result.error_no == ENOENT &&
+                        build_slide_path(0U, "gif", result.image_path,
+                                         sizeof(result.image_path))) {
+                        result.success = probe_slide_file(&result);
+                    }
+                }
+#endif
             }
             bsp_display_unlock();
         }

@@ -46,8 +46,10 @@ timer consumes that queue and is the only asynchronous path that mutates image
 or label widgets.
 
 Button boards call `slide_player_show_next()` while holding the BSP display
-lock. The request wraps modulo the configured slide count; touch gestures keep
-their existing bounded left/right behavior.
+lock. The request wraps modulo the configured slide count. If both the PNG and
+GIF for a requested slide are unavailable, the same button request immediately
+falls back to the first slide while touch gestures keep their existing bounded
+behavior.
 
 The top-level frame reads the active display resolution and has no BSP header or
 board-specific panel dimensions.
