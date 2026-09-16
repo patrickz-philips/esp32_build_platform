@@ -113,7 +113,7 @@ API. The TCA9554 also routes power, PMU, IMU, RTC, and optional GNSS signals.
 | ES7210 ADC | I2C `0x40`, I2S/TDM | N/A | 9, 10, 14, 15, 42, 45 | Microphone input |
 | microSD | 1-bit SDMMC | No CD/WP | 1, 2, 3, 41 | Removable storage |
 | LC76G (`-G` only) | I2C `0x50`/`0x54` | TCA9554 P7 RST | 14, 15, 17, 18 | Optional GNSS |
-| WS2812 ring | RMT | 27 LEDs, GRB wire order | 16 | External status lighting |
+| WS2812 ring | RMT | 27 LEDs, RGB byte order | 16 | External status lighting |
 | Button | GPIO | Active-low input with pull-up | 18 | External light-ring control |
 
 The ES7210 captures two onboard microphones and the playback reference. GPIO41

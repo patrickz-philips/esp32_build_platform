@@ -36,6 +36,7 @@ typedef struct {
     lightring_mode_t           mode;
     const lightring_palette_t *primary;
     const lightring_palette_t *secondary;
+    uint16_t                   elapsed_ms;
 } lr_command_t;
 
 typedef struct {
@@ -89,8 +90,8 @@ static bool set_status(uint32_t generation, lightring_status_t status)
     return current;
 }
 
-static bool run_step(const lr_step_t *step, uint32_t generation,
-                     const lr_command_t *command)
+static bool run_step_from(const lr_step_t *step, uint16_t elapsed_offset_ms,
+                          uint32_t generation, const lr_command_t *command)
 {
     TickType_t start = xTaskGetTickCount();
 
@@ -99,7 +100,7 @@ static bool run_step(const lr_step_t *step, uint32_t generation,
             return false;
         }
 
-        uint32_t elapsed = ticks_to_ms(xTaskGetTickCount() - start);
+        uint32_t elapsed = elapsed_offset_ms + ticks_to_ms(xTaskGetTickCount() - start);
         bool last = elapsed >= step->duration_ms;
         if (last) {
             elapsed = step->duration_ms;
@@ -124,6 +125,12 @@ static bool run_step(const lr_step_t *step, uint32_t generation,
         }
         vTaskDelay(pdMS_TO_TICKS(LIGHTRING_FRAME_MS));
     }
+}
+
+static bool run_step(const lr_step_t *step, uint32_t generation,
+                     const lr_command_t *command)
+{
+    return run_step_from(step, 0U, generation, command);
 }
 
 static void complete_on(uint32_t generation, lightring_mode_t mode)
@@ -190,8 +197,22 @@ static void run_command(const lr_command_t *command)
 
     case LR_COMMAND_CANCEL_MODE_CHANGE:
         ESP_LOGI(TAG, "Effect start: cancel mode change");
-        step = (lr_step_t) { LR_PH_EDGE_FADE_OUT, LR_EDGE_FADE_MS };
-        if (run_step(&step, generation, command)) {
+        if (command->elapsed_ms < LR_MODE_COLLAPSE_MS) {
+            const uint16_t collapse_offset_ms = (uint16_t)(
+                ((uint32_t)command->elapsed_ms * (LIGHTRING_PATH_LENGTH - 1U) *
+                 LR_DEACTIVATE_MS) /
+                (LR_MODE_COLLAPSE_MS * LIGHTRING_PATH_LENGTH));
+            step = (lr_step_t) { LR_PH_COLLAPSE_OFF, LR_DEACTIVATE_MS };
+            if (!run_step_from(&step, collapse_offset_ms, generation, command)) {
+                break;
+            }
+        } else {
+            step = (lr_step_t) { LR_PH_EDGE_FADE_OUT, LR_EDGE_FADE_MS };
+            if (!run_step(&step, generation, command)) {
+                break;
+            }
+        }
+        if (generation_is_current(generation)) {
             complete_off(generation);
             ESP_LOGI(TAG, "Effect complete: ring off");
         }
@@ -262,7 +283,7 @@ int lightring_activate(lightring_mode_t mode)
         return -1;
     }
 
-    lr_command_t command = { LR_COMMAND_ACTIVATE, mode, palette, NULL };
+    lr_command_t command = { LR_COMMAND_ACTIVATE, mode, palette, NULL, 0U };
     taskENTER_CRITICAL(&s_lock);
     if (s_task == NULL || s_status != LIGHTRING_STATUS_OFF) {
         taskEXIT_CRITICAL(&s_lock);
@@ -286,6 +307,7 @@ int lightring_deactivate(void)
         s_active_mode,
         palette_for_mode(s_active_mode),
         NULL,
+        0U,
     };
     queue_locked(&command, LIGHTRING_STATUS_DEACTIVATING);
     taskEXIT_CRITICAL(&s_lock);
@@ -311,6 +333,7 @@ int lightring_begin_mode_change(lightring_mode_t next_mode)
         next_mode,
         palette_for_mode(s_active_mode),
         next,
+        0U,
     };
     s_target_mode = next_mode;
     s_mode_change_started = now;
@@ -336,6 +359,7 @@ int lightring_cancel_mode_change(void)
         s_active_mode,
         palette_for_mode(s_active_mode),
         NULL,
+        (uint16_t)elapsed,
     };
     queue_locked(&command, LIGHTRING_STATUS_DEACTIVATING);
     taskEXIT_CRITICAL(&s_lock);
@@ -360,6 +384,7 @@ int lightring_commit_mode_change(void)
         s_target_mode,
         palette_for_mode(s_target_mode),
         NULL,
+        0U,
     };
     queue_locked(&command, LIGHTRING_STATUS_MODE_APPLYING);
     taskEXIT_CRITICAL(&s_lock);

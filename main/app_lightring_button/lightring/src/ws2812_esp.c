@@ -23,7 +23,6 @@ static const char *TAG = "ws2812";
 static rmt_channel_handle_t s_channel;
 static rmt_encoder_handle_t s_encoder;
 static uint16_t s_led_count;
-static uint8_t s_grb_pixels[LIGHTRING_LED_COUNT * 3U];
 
 static size_t ws2812_encode(rmt_encoder_t *encoder,
                             rmt_channel_handle_t channel,
@@ -174,7 +173,7 @@ int ws2812_init(const ws2812_config_t *config)
         return -1;
     }
     s_led_count = config->led_count;
-    ESP_LOGI(TAG, "RMT ready on GPIO%d, GRB wire order", config->gpio_num);
+    ESP_LOGI(TAG, "RMT ready on GPIO%d, RGB byte order", config->gpio_num);
     return 0;
 }
 
@@ -189,13 +188,7 @@ int ws2812_send(const uint8_t *rgb, uint16_t led_count)
         .loop_count = 0,
     };
     const size_t data_size = (size_t)led_count * 3U;
-    for (uint16_t led = 0U; led < led_count; ++led) {
-        const size_t offset = (size_t)led * 3U;
-        s_grb_pixels[offset] = rgb[offset + 1U];
-        s_grb_pixels[offset + 1U] = rgb[offset];
-        s_grb_pixels[offset + 2U] = rgb[offset + 2U];
-    }
-    if (rmt_transmit(s_channel, s_encoder, s_grb_pixels, data_size, &tx_config) != ESP_OK) {
+    if (rmt_transmit(s_channel, s_encoder, rgb, data_size, &tx_config) != ESP_OK) {
         return -1;
     }
     return rmt_tx_wait_all_done(s_channel, portMAX_DELAY) == ESP_OK ? 0 : -1;

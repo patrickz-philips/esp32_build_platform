@@ -32,7 +32,7 @@ Modes are explicit rather than numeric variants:
 | `lightring_activate(mode)` | `OFF` | Mode color expands from LEDs 26/27 in 350 ms | `ON` |
 | `lightring_deactivate()` | `ON` | Color collapses toward LEDs 26/27 and turns fully off in 350 ms | `OFF` |
 | `lightring_begin_mode_change(next)` | `ON` | Collapses to LEDs 26/27 in 300 ms, waits there until 750 ms, then blends the edge to `next` in 200 ms | `MODE_PREVIEW` |
-| `lightring_cancel_mode_change()` | Before 750 ms | LEDs 26/27 breathe out in 200 ms | `OFF` |
+| `lightring_cancel_mode_change()` | Before 750 ms | Before 300 ms, continue the full collapse; afterward, fade LEDs 26/27 in 200 ms | `OFF` |
 | `lightring_commit_mode_change()` | At or after 750 ms | The new mode color expands from LEDs 26/27 in 400 ms | `ON` |
 
 LED labels in this table are one-based. They are physical indices 25 and 26
@@ -81,8 +81,8 @@ if (lightring_init(&config) == 0) {
 }
 ```
 
-The renderer frame buffer remains RGB. The RMT output boundary remaps each pixel
-to the WS2812 GRB wire order without changing renderer or palette data.
+The renderer frame buffer is transmitted in its original RGB byte order without
+channel remapping.
 
 ## Host test
 

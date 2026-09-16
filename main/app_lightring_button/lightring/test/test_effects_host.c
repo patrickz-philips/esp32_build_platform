@@ -41,6 +41,11 @@ int main(void)
         assert(pixel_is_lit(led) == (led == 25U || led == 26U));
     }
 
+    render(LR_PH_COLLAPSE_TO_EDGE, 150U, 300U, &LR_PAL_REGULAR, NULL);
+    memcpy(expected, lightring_framebuffer, sizeof(expected));
+    render(LR_PH_COLLAPSE_OFF, 162U, 350U, &LR_PAL_REGULAR, NULL);
+    assert(memcmp(expected, lightring_framebuffer, sizeof(expected)) == 0);
+
     render(LR_PH_COLLAPSE_OFF, 350U, 350U, &LR_PAL_REGULAR, NULL);
     for (uint16_t led = 0U; led < LIGHTRING_LED_COUNT; ++led) {
         assert(!pixel_is_lit(led));

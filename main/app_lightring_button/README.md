@@ -19,7 +19,8 @@ ESP32-S3 RMT TX peripheral directly.
 - The ring starts off.
 - Pressing the button while off expands the current palette across the ring.
 - Pressing while on starts a change to the next palette.
-- Releasing before 750 ms cancels the change and fades the ring off.
+- Releasing before 300 ms continues the current collapse smoothly to off.
+- Releasing from 300 ms through 749 ms fades the two edge LEDs off.
 - Releasing at or after 750 ms commits the next palette and expands it.
 
 The button is sampled every 10 ms and must remain stable for 30 ms. The GPIO18
@@ -34,7 +35,7 @@ if the initial frame or task creation fails.
 | Task | Stack | Priority | Responsibility |
 |:-----|:------|:---------|:---------------|
 | `main` | ESP-IDF default | ESP-IDF default | Poll and debounce GPIO18; translate button edges to light-domain events |
-| `lightring` | 4096 bytes | 5 | Render RGB frames and transmit them in GRB wire order every 15 ms |
+| `lightring` | 4096 bytes | 5 | Render and transmit interruptible 15 ms RGB animation frames |
 
 Both tasks and the RMT device live for the firmware lifetime. No runtime
 shutdown path is required by this app.
@@ -47,5 +48,5 @@ does not access renderer state or frame-buffer internals.
 ## Device Checks
 
 The build validates component and RMT API wiring only. On the standard 1.75-inch
-board, verify GPIO levels, GRB wire order, all 27 LED positions, palette order,
+board, verify GPIO levels, RGB byte order, all 27 LED positions, palette order,
 the 30 ms debounce behavior, and the 750 ms short/long press boundary.
