@@ -1,16 +1,33 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#else
+#include "FreeRTOS.h"
+#include "task.h"
+#endif
 
 #include "lightring.h"
 #include "lightring_effects.h"
 #include "lightring_palette.h"
 #include "ws2812.h"
 
-#define LR_DEFAULT_STACK_BYTES       3072U
+#ifdef ESP_PLATFORM
+#define LR_DEFAULT_STACK_SIZE        3072U
+#define LR_ENTER_CRITICAL()          taskENTER_CRITICAL(&s_lock)
+#define LR_EXIT_CRITICAL()           taskEXIT_CRITICAL(&s_lock)
+#define LR_LOG_INFO(...)             ESP_LOGI(TAG, __VA_ARGS__)
+#define LR_LOG_ERROR(...)            ESP_LOGE(TAG, __VA_ARGS__)
+#else
+#define LR_DEFAULT_STACK_SIZE        512U
+#define LR_ENTER_CRITICAL()          taskENTER_CRITICAL()
+#define LR_EXIT_CRITICAL()           taskEXIT_CRITICAL()
+#define LR_LOG_INFO(...)             ((void) 0)
+#define LR_LOG_ERROR(...)            ((void) 0)
+#endif
 #define LR_DEFAULT_PRIORITY          5U
 #define LR_ACTIVATE_MS               350U
 #define LR_DEACTIVATE_MS             350U
@@ -21,7 +38,9 @@
 #define LR_MODE_EXPAND_MS            400U
 #define LR_MODE_WAIT_MS              (LR_MODE_DECISION_MS - LR_MODE_COLLAPSE_MS)
 
+#ifdef ESP_PLATFORM
 static const char *TAG = "lightring";
+#endif
 
 typedef enum {
     LR_COMMAND_ACTIVATE = 0,
@@ -51,7 +70,9 @@ static volatile lightring_status_t s_status = LIGHTRING_STATUS_OFF;
 static lightring_mode_t             s_active_mode = LIGHTRING_MODE_REGULAR;
 static lightring_mode_t             s_target_mode = LIGHTRING_MODE_REGULAR;
 static TickType_t                   s_mode_change_started;
+#ifdef ESP_PLATFORM
 static portMUX_TYPE                 s_lock = portMUX_INITIALIZER_UNLOCKED;
+#endif
 
 static const lightring_palette_t *palette_for_mode(lightring_mode_t mode)
 {
@@ -81,12 +102,12 @@ static bool set_status(uint32_t generation, lightring_status_t status)
 {
     bool current;
 
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     current = generation_is_current(generation);
     if (current) {
         s_status = status;
     }
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
     return current;
 }
 
@@ -115,7 +136,7 @@ static bool run_step_from(const lr_step_t *step, uint16_t elapsed_offset_ms,
         };
         (void) lightring_render_phase(&frame);
         if (ws2812_send(lightring_framebuffer, LIGHTRING_LED_COUNT) != 0) {
-            ESP_LOGE(TAG, "Effect output failed");
+            LR_LOG_ERROR("Effect output failed");
             (void)set_status(generation, LIGHTRING_STATUS_OFF);
             return false;
         }
@@ -135,21 +156,21 @@ static bool run_step(const lr_step_t *step, uint32_t generation,
 
 static void complete_on(uint32_t generation, lightring_mode_t mode)
 {
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     if (generation_is_current(generation)) {
         s_active_mode = mode;
         s_status = LIGHTRING_STATUS_ON;
     }
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
 }
 
 static void complete_off(uint32_t generation)
 {
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     if (generation_is_current(generation)) {
         s_status = LIGHTRING_STATUS_OFF;
     }
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
 }
 
 static void run_command(const lr_command_t *command)
@@ -159,26 +180,26 @@ static void run_command(const lr_command_t *command)
 
     switch (command->type) {
     case LR_COMMAND_ACTIVATE:
-        ESP_LOGI(TAG, "Effect start: activate, mode=%s", command->primary->name);
+        LR_LOG_INFO("Effect start: activate, mode=%s", command->primary->name);
         step = (lr_step_t) { LR_PH_EXPAND, LR_ACTIVATE_MS };
         if (run_step(&step, generation, command)) {
             complete_on(generation, command->mode);
-            ESP_LOGI(TAG, "Effect complete: ring on, mode=%s", command->primary->name);
+            LR_LOG_INFO("Effect complete: ring on, mode=%s", command->primary->name);
         }
         break;
 
     case LR_COMMAND_DEACTIVATE:
-        ESP_LOGI(TAG, "Effect start: deactivate, mode=%s", command->primary->name);
+        LR_LOG_INFO("Effect start: deactivate, mode=%s", command->primary->name);
         step = (lr_step_t) { LR_PH_COLLAPSE_OFF, LR_DEACTIVATE_MS };
         if (run_step(&step, generation, command)) {
             complete_off(generation);
-            ESP_LOGI(TAG, "Effect complete: ring off");
+            LR_LOG_INFO("Effect complete: ring off");
         }
         break;
 
     case LR_COMMAND_BEGIN_MODE_CHANGE:
-        ESP_LOGI(TAG, "Effect start: mode preview, %s -> %s",
-                 command->primary->name, command->secondary->name);
+        LR_LOG_INFO("Effect start: mode preview, %s -> %s",
+                command->primary->name, command->secondary->name);
         step = (lr_step_t) { LR_PH_COLLAPSE_TO_EDGE, LR_MODE_COLLAPSE_MS };
         if (!run_step(&step, generation, command) ||
             !set_status(generation, LIGHTRING_STATUS_MODE_WAITING)) {
@@ -191,12 +212,12 @@ static void run_command(const lr_command_t *command)
         }
         step = (lr_step_t) { LR_PH_EDGE_BLEND, LR_EDGE_BLEND_MS };
         if (run_step(&step, generation, command)) {
-            ESP_LOGI(TAG, "Effect complete: mode preview, target=%s", command->secondary->name);
+            LR_LOG_INFO("Effect complete: mode preview, target=%s", command->secondary->name);
         }
         break;
 
     case LR_COMMAND_CANCEL_MODE_CHANGE:
-        ESP_LOGI(TAG, "Effect start: cancel mode change");
+        LR_LOG_INFO("Effect start: cancel mode change");
         if (command->elapsed_ms < LR_MODE_COLLAPSE_MS) {
             const uint16_t collapse_offset_ms = (uint16_t)(
                 ((uint32_t)command->elapsed_ms * (LIGHTRING_PATH_LENGTH - 1U) *
@@ -214,16 +235,16 @@ static void run_command(const lr_command_t *command)
         }
         if (generation_is_current(generation)) {
             complete_off(generation);
-            ESP_LOGI(TAG, "Effect complete: ring off");
+            LR_LOG_INFO("Effect complete: ring off");
         }
         break;
 
     case LR_COMMAND_COMMIT_MODE_CHANGE:
-        ESP_LOGI(TAG, "Effect start: apply mode, mode=%s", command->primary->name);
+        LR_LOG_INFO("Effect start: apply mode, mode=%s", command->primary->name);
         step = (lr_step_t) { LR_PH_EXPAND, LR_MODE_EXPAND_MS };
         if (run_step(&step, generation, command)) {
             complete_on(generation, command->mode);
-            ESP_LOGI(TAG, "Effect complete: ring on, mode=%s", command->primary->name);
+            LR_LOG_INFO("Effect complete: ring on, mode=%s", command->primary->name);
         }
         break;
     }
@@ -236,9 +257,9 @@ static void render_task(void *argument)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         lr_command_t command;
-        taskENTER_CRITICAL(&s_lock);
+        LR_ENTER_CRITICAL();
         command = s_command;
-        taskEXIT_CRITICAL(&s_lock);
+        LR_EXIT_CRITICAL();
         run_command(&command);
     }
 }
@@ -264,8 +285,13 @@ int lightring_init(const lightring_config_t *config)
         return -1;
     }
 
+#ifdef ESP_PLATFORM
     uint32_t stack = config->task_stack_bytes ? config->task_stack_bytes
-                                              : LR_DEFAULT_STACK_BYTES;
+                                              : LR_DEFAULT_STACK_SIZE;
+#else
+    uint16_t stack = config->task_stack_words ? config->task_stack_words
+                                              : (uint16_t) LR_DEFAULT_STACK_SIZE;
+#endif
     UBaseType_t priority = config->task_priority ? (UBaseType_t) config->task_priority
                                                  : (UBaseType_t) LR_DEFAULT_PRIORITY;
     if (xTaskCreate(render_task, "lightring", stack, NULL, priority, &s_task) != pdPASS) {
@@ -284,22 +310,22 @@ int lightring_activate(lightring_mode_t mode)
     }
 
     lr_command_t command = { LR_COMMAND_ACTIVATE, mode, palette, NULL, 0U };
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     if (s_task == NULL || s_status != LIGHTRING_STATUS_OFF) {
-        taskEXIT_CRITICAL(&s_lock);
+        LR_EXIT_CRITICAL();
         return -1;
     }
     queue_locked(&command, LIGHTRING_STATUS_ACTIVATING);
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
     xTaskNotifyGive(s_task);
     return 0;
 }
 
 int lightring_deactivate(void)
 {
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     if (s_task == NULL || s_status != LIGHTRING_STATUS_ON) {
-        taskEXIT_CRITICAL(&s_lock);
+        LR_EXIT_CRITICAL();
         return -1;
     }
     lr_command_t command = {
@@ -310,7 +336,7 @@ int lightring_deactivate(void)
         0U,
     };
     queue_locked(&command, LIGHTRING_STATUS_DEACTIVATING);
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
     xTaskNotifyGive(s_task);
     return 0;
 }
@@ -323,9 +349,9 @@ int lightring_begin_mode_change(lightring_mode_t next_mode)
     }
 
     TickType_t now = xTaskGetTickCount();
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     if (s_task == NULL || s_status != LIGHTRING_STATUS_ON || next_mode == s_active_mode) {
-        taskEXIT_CRITICAL(&s_lock);
+        LR_EXIT_CRITICAL();
         return -1;
     }
     lr_command_t command = {
@@ -338,7 +364,7 @@ int lightring_begin_mode_change(lightring_mode_t next_mode)
     s_target_mode = next_mode;
     s_mode_change_started = now;
     queue_locked(&command, LIGHTRING_STATUS_MODE_COLLAPSING);
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
     xTaskNotifyGive(s_task);
     return 0;
 }
@@ -346,12 +372,12 @@ int lightring_begin_mode_change(lightring_mode_t next_mode)
 int lightring_cancel_mode_change(void)
 {
     TickType_t now = xTaskGetTickCount();
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     uint32_t elapsed = ticks_to_ms(now - s_mode_change_started);
     bool changing = s_status == LIGHTRING_STATUS_MODE_COLLAPSING ||
                     s_status == LIGHTRING_STATUS_MODE_WAITING;
     if (s_task == NULL || !changing || elapsed >= LR_MODE_DECISION_MS) {
-        taskEXIT_CRITICAL(&s_lock);
+        LR_EXIT_CRITICAL();
         return -1;
     }
     lr_command_t command = {
@@ -362,7 +388,7 @@ int lightring_cancel_mode_change(void)
         (uint16_t)elapsed,
     };
     queue_locked(&command, LIGHTRING_STATUS_DEACTIVATING);
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
     xTaskNotifyGive(s_task);
     return 0;
 }
@@ -370,13 +396,13 @@ int lightring_cancel_mode_change(void)
 int lightring_commit_mode_change(void)
 {
     TickType_t now = xTaskGetTickCount();
-    taskENTER_CRITICAL(&s_lock);
+    LR_ENTER_CRITICAL();
     uint32_t elapsed = ticks_to_ms(now - s_mode_change_started);
     bool changing = s_status == LIGHTRING_STATUS_MODE_COLLAPSING ||
                     s_status == LIGHTRING_STATUS_MODE_WAITING ||
                     s_status == LIGHTRING_STATUS_MODE_PREVIEW;
     if (s_task == NULL || !changing || elapsed < LR_MODE_DECISION_MS) {
-        taskEXIT_CRITICAL(&s_lock);
+        LR_EXIT_CRITICAL();
         return -1;
     }
     lr_command_t command = {
@@ -387,7 +413,7 @@ int lightring_commit_mode_change(void)
         0U,
     };
     queue_locked(&command, LIGHTRING_STATUS_MODE_APPLYING);
-    taskEXIT_CRITICAL(&s_lock);
+    LR_EXIT_CRITICAL();
     xTaskNotifyGive(s_task);
     return 0;
 }

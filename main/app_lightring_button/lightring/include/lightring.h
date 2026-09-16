@@ -25,7 +25,11 @@ typedef enum {
 
 typedef struct {
     ws2812_config_t ws2812;
+#ifdef ESP_PLATFORM
     uint32_t        task_stack_bytes; /* 0 -> default */
+#else
+    uint16_t        task_stack_words; /* 0 -> default */
+#endif
     uint32_t        task_priority;    /* 0 -> default */
 } lightring_config_t;
 

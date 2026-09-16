@@ -1,4 +1,4 @@
-# ESP32-S3 Light Ring Component
+# ESP32-S3 and STM32F429 Light Ring Component
 
 This is a self-contained 27-LED light-ring component. Its public API
 accepts light-domain events rather than button events, so GPIO, BLE, a UI, or
@@ -67,9 +67,13 @@ void on_control_up(void)
 
 ## Integration
 
-The ESP-IDF component compiles the renderer, palettes, orchestrator, and
-`ws2812_esp.c`. The output backend uses the ESP32-S3 RMT TX driver with explicit
-WS2812 timing. Initialize after the scheduler is available:
+The effect renderer and state machine are shared. Select only the WS2812 source
+files for the target platform.
+
+### ESP32-S3
+
+Compile `ws2812_esp.c`. The output backend uses the ESP32-S3 RMT TX driver with
+explicit WS2812 timing. Initialize after the scheduler is available:
 
 ```c
 lightring_config_t config = {0};
@@ -81,8 +85,27 @@ if (lightring_init(&config) == 0) {
 }
 ```
 
-The renderer frame buffer is transmitted in its original RGB byte order without
-channel remapping.
+### STM32F429
+
+Compile `ws2812.c`, `ws2812_tim_dma.c`, and `ws2812_spi_dma.c` with STM32 HAL
+and FreeRTOS. The original TIM PWM DMA and SPI DMA configuration API is
+preserved:
+
+```c
+lightring_config_t config = {0};
+config.ws2812.backend = LIGHTRING_WS2812_SPI_DMA;
+config.ws2812.spi = &hspi2;
+config.ws2812.led_count = LIGHTRING_LED_COUNT;
+config.task_stack_words = 512U;
+
+if (lightring_init(&config) == 0) {
+    (void) lightring_activate(LIGHTRING_MODE_REGULAR);
+}
+```
+
+For the TIM backend, set `config.ws2812.backend`, `tim`, and `tim_channel`
+instead. Both platforms transmit the renderer frame buffer in its original RGB
+byte order without channel remapping.
 
 ## Host test
 
