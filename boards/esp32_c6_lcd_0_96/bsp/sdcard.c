@@ -16,6 +16,7 @@ esp_err_t bsp_sdcard_mount(void)
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = SPI2_HOST;
+    host.flags |= SDMMC_HOST_FLAG_SPI_IGNORE_DATA_CRC;
 
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.host_id = SPI2_HOST;

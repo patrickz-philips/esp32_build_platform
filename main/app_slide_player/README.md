@@ -33,7 +33,9 @@ task, queue, decoder, and SD mount as applicable.
 
 The BSP owns the LVGL task. A one-entry overwrite queue coalesces rapid gestures
 so stale slide requests do not accumulate. The UI also drops stale results by
-request ID.
+request ID. On boards where the display and SD card share an SPI host, the
+reader holds the display lock and drains queued LCD transfers before probing a
+file.
 
 ## LVGL Model Contract
 

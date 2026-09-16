@@ -153,7 +153,7 @@ lv_display_t * bsp_display_start(void)
         .io_handle = s_panel_io,
         .panel_handle = s_panel,
         .buffer_size = BOARD_LCD_H_RES * LCD_DRAW_BUF_LINES,
-        .double_buffer = true,
+        .double_buffer = false,
         .hres = BOARD_LCD_H_RES,
         .vres = BOARD_LCD_V_RES,
         .monochrome = false,
@@ -179,6 +179,14 @@ lv_display_t * bsp_display_start(void)
     }
     ESP_LOGI(TAG, "Display started: %dx%d ST7735", BOARD_LCD_H_RES, BOARD_LCD_V_RES);
     return s_display;
+}
+
+esp_err_t bsp_display_wait_idle(void)
+{
+    if (s_panel_io == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_lcd_panel_io_tx_param(s_panel_io, -1, NULL, 0);
 }
 
 esp_err_t bsp_display_lock(uint32_t timeout_ms)

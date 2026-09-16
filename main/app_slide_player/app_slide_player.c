@@ -196,11 +196,23 @@ static void slide_reader_task(void * arg)
             .slide_index = request.slide_index,
         };
         memcpy(result.image_path, request.image_path, sizeof(result.image_path));
-        result.success = probe_slide_file(&result);
-        if (!result.success && result.error_no == ENOENT &&
-            build_slide_path(result.slide_index, "gif", result.image_path,
-                             sizeof(result.image_path))) {
-            result.success = probe_slide_file(&result);
+
+        if (!display_lock_forever()) {
+            result.error_no = EBUSY;
+        } else {
+            const esp_err_t wait_ret = bsp_display_wait_idle();
+            if (wait_ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to wait for display SPI: %s", esp_err_to_name(wait_ret));
+                result.error_no = EIO;
+            } else {
+                result.success = probe_slide_file(&result);
+                if (!result.success && result.error_no == ENOENT &&
+                    build_slide_path(result.slide_index, "gif", result.image_path,
+                                     sizeof(result.image_path))) {
+                    result.success = probe_slide_file(&result);
+                }
+            }
+            bsp_display_unlock();
         }
 
         if (!result.success) {
@@ -299,7 +311,13 @@ static void slide_player_runtime_deinit(void)
 
 static esp_err_t slide_player_runtime_init(void)
 {
-    esp_err_t ret = bsp_sdcard_mount();
+    esp_err_t ret = bsp_display_wait_idle();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to wait for display SPI: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ret = bsp_sdcard_mount();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "SD card mount failed: %s", esp_err_to_name(ret));
         return ret;

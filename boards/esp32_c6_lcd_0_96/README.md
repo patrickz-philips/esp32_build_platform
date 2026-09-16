@@ -85,8 +85,13 @@ the maintained `waveshare/esp_lcd_st7735` 2.0.x component and
 | micro-SD | SPI2 | CS 4 | 4-7 | PNG/GIF storage |
 
 The display's logical window uses the vendor demo's `(1, 26)` GRAM offset and
-`0xA8` MADCTL orientation. SPI starts at 40 MHz for conservative bring-up; the
-Arduino demo requests 80 MHz.
+`0xA8` MADCTL orientation. LVGL uses an 80 x 160 logical viewport, mapped to the
+physical 160 x 80 panel by the display driver's X/Y swap. SPI starts at 40 MHz
+for conservative bring-up; the Arduino demo requests 80 MHz.
+
+The LCD and micro-SD share SPI2. The display uses one draw buffer so image
+decoding cannot start another SD transaction while an LCD DMA transfer is still
+running. Background SD probes also drain the LCD queue before accessing files.
 
 ### Input and Connectivity
 
@@ -118,7 +123,7 @@ their existing left/right gesture behavior.
 | Flash | 4 MB QIO |
 | PSRAM | Disabled |
 | Partition table | NVS 24 KB, PHY 4 KB, factory app 3 MB |
-| LVGL draw buffers | Two DMA-capable 160 x 20 RGB565 stripes |
+| LVGL draw buffers | One DMA-capable 80 x 20 RGB565 stripe |
 | LCD driver | `waveshare/esp_lcd_st7735 ^2.0.0` |
 | LVGL integration | `espressif/esp_lvgl_port ^2.9.0` |
 
