@@ -84,10 +84,11 @@ the maintained `waveshare/esp_lcd_st7735` 2.0.x component and
 | ST7735 LCD | SPI2 | CS 14, DC 15, RST 21, BL 3 | 3, 5-7, 14, 15, 21 | 160 x 80 display |
 | micro-SD | SPI2 | CS 4 | 4-7 | PNG/GIF storage |
 
-The display's logical window uses the vendor demo's `(1, 26)` GRAM offset and
-`0xA8` MADCTL orientation. LVGL uses an 80 x 160 logical viewport, mapped to the
-physical 160 x 80 panel by the display driver's X/Y swap. SPI starts at 40 MHz
-for conservative bring-up; the Arduino demo requests 80 MHz.
+The vendor demo uses a `(1, 26)` GRAM offset and `0xA8` MADCTL value for its
+160 x 80 landscape mode. This BSP uses the corresponding `(26, 1)` offset and
+`0x08` MADCTL value for a native 80 x 160 portrait viewport. Its refresh timer
+runs every 50 ms (20 FPS). SPI starts at 40 MHz for conservative bring-up; the
+Arduino demo requests 80 MHz.
 
 The LCD and micro-SD share SPI2. The display uses one draw buffer so image
 decoding cannot start another SD transaction while an LCD DMA transfer is still

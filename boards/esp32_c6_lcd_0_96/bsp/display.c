@@ -16,6 +16,7 @@ static const char * TAG = "bsp_display";
 #define LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
 #define LCD_DRAW_BUF_LINES 20
 #define LCD_BITS_PER_PIXEL 16
+#define LCD_REFRESH_PERIOD_MS 50
 
 #define LEDC_BL_MODE       LEDC_LOW_SPEED_MODE
 #define LEDC_BL_TIMER      LEDC_TIMER_0
@@ -30,7 +31,7 @@ static esp_lcd_panel_io_handle_t s_panel_io;
 
 static const st7735_lcd_init_cmd_t s_lcd_init_cmds[] = {
     {ST7735_SLPOUT, NULL, 0, 120},
-    {ST7735_MADCTL, (uint8_t[]){0xA8}, 1, 0},
+    {ST7735_MADCTL, (uint8_t[]){0x08}, 1, 0},
     {ST7735_FRMCTR1, (uint8_t[]){0x01, 0x2C, 0x2D}, 3, 0},
     {ST7735_FRMCTR2, (uint8_t[]){0x01, 0x2C, 0x2D}, 3, 0},
     {ST7735_FRMCTR3, (uint8_t[]){0x01, 0x2C, 0x2D, 0x01, 0x2C, 0x2D}, 6, 0},
@@ -128,7 +129,7 @@ static esp_err_t panel_init(void)
                         "Failed to create ST7735 panel");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "Failed to reset panel");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "Failed to initialize panel");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(s_panel, 1, 26), TAG, "Failed to set panel gap");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_set_gap(s_panel, 26, 1), TAG, "Failed to set panel gap");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "Failed to turn display on");
     return ESP_OK;
 }
@@ -159,9 +160,9 @@ lv_display_t * bsp_display_start(void)
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
         .rotation = {
-            .swap_xy = true,
+            .swap_xy = false,
             .mirror_x = false,
-            .mirror_y = true,
+            .mirror_y = false,
         },
         .flags = {
             .buff_dma = true,
@@ -173,11 +174,13 @@ lv_display_t * bsp_display_start(void)
         ESP_LOGE(TAG, "Failed to add LVGL display");
         return NULL;
     }
+    lv_timer_set_period(lv_display_get_refr_timer(s_display), LCD_REFRESH_PERIOD_MS);
 
     if (bsp_display_brightness_set(100) != ESP_OK) {
         ESP_LOGW(TAG, "Failed to enable backlight");
     }
-    ESP_LOGI(TAG, "Display started: %dx%d ST7735", BOARD_LCD_H_RES, BOARD_LCD_V_RES);
+    ESP_LOGI(TAG, "Display started: %dx%d portrait ST7735, refresh=20 FPS",
+             BOARD_LCD_H_RES, BOARD_LCD_V_RES);
     return s_display;
 }
 
