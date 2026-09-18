@@ -1,3 +1,5 @@
 dependencies:
   espressif/esp_lv_decoder:
     version: "^0.4.3"
+  espressif/libpng:
+    version: "^1.6.58"

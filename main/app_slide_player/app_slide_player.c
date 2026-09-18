@@ -18,6 +18,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "lvgl.h"
+#include "lvgl_private.h"
+#include "png.h"
 #include "slide_player.h"
 
 #ifndef BOARD_HAS_BUTTON
@@ -48,11 +51,19 @@ typedef struct {
     char image_path[SLIDE_PLAYER_IMAGE_PATH_MAX_LEN];
 } slide_load_request_t;
 
+typedef enum {
+    RGB565_CONVERSION_LUT,
+    RGB565_CONVERSION_SHIFT,
+} rgb565_conversion_t;
+
 static esp_lv_decoder_handle_t s_decoder_handle;
+static lv_image_decoder_t * s_rgb565_decoder;
 static QueueHandle_t s_request_queue;
 static TaskHandle_t s_reader_task_handle;
 static TaskHandle_t s_serial_task_handle;
 static uint32_t s_slide_count;
+static rgb565_conversion_t s_rgb565_conversion = RGB565_CONVERSION_LUT;
+static uint8_t s_quantize_lut[2][256];
 #if BOARD_HAS_BUTTON
 static TaskHandle_t s_button_task_handle;
 #endif
@@ -60,6 +71,157 @@ static TaskHandle_t s_button_task_handle;
 static bool display_lock_forever(void)
 {
     return bsp_display_lock(UINT32_MAX) == ESP_OK;
+}
+
+static uint32_t read_be32(const uint8_t * data)
+{
+    return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
+           ((uint32_t)data[2] << 8) | data[3];
+}
+
+static lv_result_t rgb565_decoder_info(lv_image_decoder_t * decoder,
+                                       lv_image_decoder_dsc_t * dsc,
+                                       lv_image_header_t * header)
+{
+    (void)decoder;
+
+    if (dsc->src_type != LV_IMAGE_SRC_FILE || strcasecmp(lv_fs_get_ext(dsc->src), "png") != 0) {
+        return LV_RESULT_INVALID;
+    }
+
+    uint8_t png_header[24];
+    uint32_t bytes_read = 0U;
+    static const uint8_t png_signature[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (lv_fs_read(&dsc->file, png_header, sizeof(png_header), &bytes_read) != LV_FS_RES_OK ||
+        bytes_read != sizeof(png_header) || memcmp(png_header, png_signature, sizeof(png_signature)) != 0) {
+        return LV_RESULT_INVALID;
+    }
+
+    header->cf = LV_COLOR_FORMAT_RGB565A8;
+    header->w = read_be32(&png_header[16]);
+    header->h = read_be32(&png_header[20]);
+    header->stride = header->w * 2U;
+    return header->w > 0U && header->h > 0U ? LV_RESULT_OK : LV_RESULT_INVALID;
+}
+
+static lv_result_t rgb565_decoder_open(lv_image_decoder_t * decoder,
+                                       lv_image_decoder_dsc_t * dsc)
+{
+    lv_fs_file_t file;
+    uint32_t file_size = 0U;
+    uint32_t bytes_read = 0U;
+    uint8_t * file_data = NULL;
+    uint8_t * bgra = NULL;
+    lv_draw_buf_t * decoded = NULL;
+    png_image image = {.version = PNG_IMAGE_VERSION};
+
+    if (lv_fs_open(&file, dsc->src, LV_FS_MODE_RD) != LV_FS_RES_OK) {
+        return LV_RESULT_INVALID;
+    }
+    if (lv_fs_seek(&file, 0U, LV_FS_SEEK_END) != LV_FS_RES_OK ||
+        lv_fs_tell(&file, &file_size) != LV_FS_RES_OK || file_size == 0U ||
+        lv_fs_seek(&file, 0U, LV_FS_SEEK_SET) != LV_FS_RES_OK) {
+        goto cleanup;
+    }
+
+    file_data = malloc(file_size);
+    if (file_data == NULL || lv_fs_read(&file, file_data, file_size, &bytes_read) != LV_FS_RES_OK ||
+        bytes_read != file_size || !png_image_begin_read_from_memory(&image, file_data, file_size)) {
+        goto cleanup;
+    }
+
+    image.format = PNG_FORMAT_BGRA;
+    bgra = malloc(PNG_IMAGE_SIZE(image));
+    decoded = lv_draw_buf_create(image.width, image.height, LV_COLOR_FORMAT_RGB565A8, image.width * 2U);
+    if (bgra == NULL || decoded == NULL || !png_image_finish_read(&image, NULL, bgra, 0, NULL)) {
+        goto cleanup;
+    }
+
+    uint16_t * rgb565 = (uint16_t *)decoded->data;
+    uint8_t * alpha = (uint8_t *)decoded->data + decoded->header.stride * decoded->header.h;
+    const size_t pixel_count = (size_t)image.width * image.height;
+    for (size_t pixel_index = 0U; pixel_index < pixel_count; pixel_index++) {
+        const uint8_t blue = bgra[pixel_index * 4U];
+        const uint8_t green = bgra[pixel_index * 4U + 1U];
+        const uint8_t red = bgra[pixel_index * 4U + 2U];
+        const uint8_t red5 = s_rgb565_conversion == RGB565_CONVERSION_LUT
+                                 ? s_quantize_lut[0][red]
+                                 : red >> 3;
+        const uint8_t green6 = s_rgb565_conversion == RGB565_CONVERSION_LUT
+                                   ? s_quantize_lut[1][green]
+                                   : green >> 2;
+        const uint8_t blue5 = s_rgb565_conversion == RGB565_CONVERSION_LUT
+                                  ? s_quantize_lut[0][blue]
+                                  : blue >> 3;
+        rgb565[pixel_index] = ((uint16_t)red5 << 11) + ((uint16_t)green6 << 5) + blue5;
+        alpha[pixel_index] = bgra[pixel_index * 4U + 3U];
+    }
+
+    dsc->decoded = decoded;
+    if (!dsc->args.no_cache && lv_image_cache_is_enabled()) {
+        lv_image_cache_data_t search_key = {
+            .src_type = dsc->src_type,
+            .src = dsc->src,
+            .slot.size = decoded->data_size,
+        };
+        dsc->cache_entry = lv_image_decoder_add_to_cache(decoder, &search_key, decoded, NULL);
+        if (dsc->cache_entry == NULL) {
+            dsc->decoded = NULL;
+            goto cleanup;
+        }
+    }
+
+    png_image_free(&image);
+    free(bgra);
+    free(file_data);
+    lv_fs_close(&file);
+    return LV_RESULT_OK;
+
+cleanup:
+    if (decoded != NULL) {
+        lv_draw_buf_destroy(decoded);
+    }
+    png_image_free(&image);
+    free(bgra);
+    free(file_data);
+    lv_fs_close(&file);
+    return LV_RESULT_INVALID;
+}
+
+static void rgb565_decoder_close(lv_image_decoder_t * decoder, lv_image_decoder_dsc_t * dsc)
+{
+    (void)decoder;
+
+    if (dsc->cache_entry == NULL && dsc->decoded != NULL) {
+        lv_draw_buf_destroy((lv_draw_buf_t *)dsc->decoded);
+    }
+}
+
+static esp_err_t rgb565_decoder_init(void)
+{
+    for (uint32_t value = 0U; value < 256U; value++) {
+        s_quantize_lut[0][value] = (uint8_t)((value * 31U + 127U) / 255U);
+        s_quantize_lut[1][value] = (uint8_t)((value * 63U + 127U) / 255U);
+    }
+
+    s_rgb565_decoder = lv_image_decoder_create();
+    if (s_rgb565_decoder == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+    lv_image_decoder_set_info_cb(s_rgb565_decoder, rgb565_decoder_info);
+    lv_image_decoder_set_open_cb(s_rgb565_decoder, rgb565_decoder_open);
+    lv_image_decoder_set_close_cb(s_rgb565_decoder, rgb565_decoder_close);
+    return ESP_OK;
+}
+
+static bool set_rgb565_conversion(rgb565_conversion_t conversion)
+{
+    /* The legacy shifts truncate toward zero and can miss by a full RGB565 step;
+       the LUT rounds to the nearest representable level and halves the maximum error. */
+    s_rgb565_conversion = conversion;
+    ESP_LOGI(TAG, "PNG RGB565 conversion: %s",
+             conversion == RGB565_CONVERSION_LUT ? "lut" : "shift");
+    return slide_player_reload();
 }
 
 static void slide_serial_task(void * arg)
@@ -85,6 +247,10 @@ static void slide_serial_task(void * arg)
             requested = slide_player_show_next();
         } else if (strcasecmp(command, "last") == 0) {
             requested = slide_player_show_previous();
+        } else if (strcasecmp(command, "rgb565_lut") == 0) {
+            requested = set_rgb565_conversion(RGB565_CONVERSION_LUT);
+        } else if (strcasecmp(command, "rgb565_shift") == 0) {
+            requested = set_rgb565_conversion(RGB565_CONVERSION_SHIFT);
         } else {
             char * end = NULL;
             errno = 0;
@@ -109,7 +275,8 @@ static esp_err_t slide_serial_start(void)
                     SERIAL_TASK_PRIORITY, &s_serial_task_handle) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Serial controls ready: next, last, 1-%u", (unsigned int)s_slide_count);
+    ESP_LOGI(TAG, "Serial controls ready: next, last, rgb565_lut, rgb565_shift, 1-%u",
+             (unsigned int)s_slide_count);
     return ESP_OK;
 }
 
@@ -432,6 +599,12 @@ static void slide_player_runtime_deinit(void)
 #endif
     slide_pipeline_stop();
 
+    if (s_rgb565_decoder != NULL) {
+        lv_image_cache_drop(NULL);
+        lv_image_decoder_delete(s_rgb565_decoder);
+        s_rgb565_decoder = NULL;
+    }
+
     if (s_decoder_handle != NULL) {
         const esp_err_t ret = esp_lv_decoder_deinit(s_decoder_handle);
         if (ret != ESP_OK) {
@@ -474,6 +647,13 @@ static esp_err_t slide_player_runtime_init(void)
         if (unmount_ret != ESP_OK) {
             ESP_LOGE(TAG, "SD rollback failed: %s", esp_err_to_name(unmount_ret));
         }
+        return ret;
+    }
+
+    ret = rgb565_decoder_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "RGB565 decoder init failed: %s", esp_err_to_name(ret));
+        slide_player_runtime_deinit();
         return ret;
     }
 

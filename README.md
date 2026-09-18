@@ -143,8 +143,8 @@ sources from `lvgl/<project>/`.
   - Swipe right: previous slide
 - On `esp32_c6_lcd_0_96`, press GPIO9 to advance; the highest slide wraps to slide 1.
 - Serial control accepts `next`, `last`, or a slide number followed by Enter.
-  On macOS, double-click `mac-app/slide-player.command` to map the arrow keys and
-  numeric input to these commands.
+  On macOS, build and open `qilin-display-mac-command/Qilin Display.app` to use
+  buttons, arrow keys, and numeric input for these commands without Python.
 
 ## Current Design Notes
 

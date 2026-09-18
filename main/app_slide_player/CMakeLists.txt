@@ -21,6 +21,7 @@ idf_component_register(
 		esp_timer
 		freertos
 		heap
+		libpng
 		log
 		lvgl__lvgl
 		$ENV{SELECTED_BOARD}

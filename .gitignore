@@ -11,3 +11,5 @@ sdkconfig.old
 /.lvgl_project
 # Generated per board/app selection by the IDF Component Manager
 /dependencies.lock
+/qilin-display-mac-command
+how-to-use-qilin-display.txt

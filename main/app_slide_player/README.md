@@ -63,12 +63,15 @@ The primary console accepts one command per line at 115200 baud:
 
 - `next`: show the next slide and wrap at the end.
 - `last`: show the previous slide and wrap at the beginning.
+- `rgb565_lut`: use LUT-based nearest-level PNG RGB565 quantization and reload the current slide.
+- `rgb565_shift`: use legacy truncating shifts for PNG RGB565 conversion and reload the current slide.
 - Any number up to the highest numbered SD asset: show that slide.
 
-On macOS, double-click `mac-app/slide-player.command` in Finder, or run it with
-an explicit port as `./mac-app/slide-player.command /dev/cu.usbmodemXXXX`. The
-left and right arrow keys send `last` and `next`; enter a number followed by
-Return to open that slide, and press Escape to quit.
+On macOS, build `qilin-display-mac-command/Qilin Display.app` with the included
+`build-app.sh`, then select the board's serial port and click Connect. The left
+and right arrow keys send `last` and `next`; the up and down arrow keys select
+LUT and shift PNG RGB565 conversion respectively. Enter a number followed by
+Return to open that slide.
 
 ## Device Checks
 
