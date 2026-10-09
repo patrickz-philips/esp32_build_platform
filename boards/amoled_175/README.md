@@ -131,6 +131,7 @@ The source of truth is [supported_apps.txt](supported_apps.txt).
 | `acc_data` | Supported | Uses the common BSP display API and active LVGL resolution; haptic output is disabled, so GPIO18 remains available to expansion/GNSS |
 | `battery_monitor` | Incompatible | Current app uses the 2.06-specific display config structure |
 | `lightring_button` | Supported | Uses external WS2812 data on GPIO16 and an active-low button on GPIO18; no display or LVGL |
+| `lightring_button_2` | Supported | Uses the same external WS2812 and button for solid RGB modes and the RGB swoosh effect |
 
 These are project integration limits, not claims that the physical board lacks
 the PMU, IMU, or audio devices.

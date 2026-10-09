@@ -54,7 +54,8 @@ The project is organized as a small layered application:
 |   |-- app_salary_cat/           # salary_cat entry and audio adapter
 |   |-- app_slide_player/         # slide_player component migration
 |   |-- app_battery_monitor/      # battery_monitor component migration
-|   `-- app_lightring_button/     # WS2812 ring and button app (no LVGL)
+|   |-- app_lightring_button/     # WS2812 ring and button app (no LVGL)
+|   `-- app_lightring_button_2/   # RGB swoosh ring and button app
 |-- sdkconfig.defaults            # Common configuration
 `-- sdkconfig.<board>             # Generated per-board config (gitignored)
 ```
@@ -114,6 +115,7 @@ variable -> persisted file (`./.board` / `./.lvgl_project`) -> default
 | `acc_data` | Accelerometer logger (IMU + PMU) | `amoled_206` |
 | `battery_monitor` | Battery / PMU monitor (AXP2101) | `amoled_206` |
 | `lightring_button` | WS2812 light ring + active-low button | `amoled_175` |
+| `lightring_button_2` | WS2812 RGB swoosh + active-low button | `amoled_175` |
 
 Each board is self-contained under `boards/<board>/`:
 
