@@ -1,4 +1,5 @@
 /build
+/release
 /managed_components
 /.cmake-tools-build
 sdkconfig.old

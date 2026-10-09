@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 
 #include "board_config.h"
 #include "driver/gpio.h"
@@ -39,6 +40,8 @@ static const UBaseType_t SD_TASK_PRIORITY = 4U;
 static const uint32_t SERIAL_TASK_STACK_SIZE = 3072U;
 static const UBaseType_t SERIAL_TASK_PRIORITY = 4U;
 static const size_t SERIAL_COMMAND_MAX_LEN = 16U;
+static const uint32_t DEFAULT_FOLDER_FPS = 20U;
+static const uint32_t MAX_FOLDER_FPS = 1000U;
 #if BOARD_HAS_BUTTON
 static const uint32_t BUTTON_TASK_STACK_SIZE = 2048U;
 static const UBaseType_t BUTTON_TASK_PRIORITY = 4U;
@@ -62,6 +65,7 @@ static QueueHandle_t s_request_queue;
 static TaskHandle_t s_reader_task_handle;
 static TaskHandle_t s_serial_task_handle;
 static uint32_t s_slide_count;
+static uint32_t s_folder_fps = DEFAULT_FOLDER_FPS;
 static rgb565_conversion_t s_rgb565_conversion = RGB565_CONVERSION_LUT;
 static uint8_t s_quantize_lut[2][256];
 #if BOARD_HAS_BUTTON
@@ -77,6 +81,38 @@ static uint32_t read_be32(const uint8_t * data)
 {
     return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
            ((uint32_t)data[2] << 8) | data[3];
+}
+
+static void fit_image_dimensions(uint32_t source_width, uint32_t source_height,
+                                 uint32_t * output_width, uint32_t * output_height)
+{
+    const lv_display_t * display = lv_display_get_default();
+    const uint32_t max_width = display != NULL
+                                   ? (uint32_t)lv_display_get_horizontal_resolution(display)
+                                   : source_width;
+    const uint32_t max_height = display != NULL
+                                    ? (uint32_t)lv_display_get_vertical_resolution(display)
+                                    : source_height;
+
+    *output_width = source_width;
+    *output_height = source_height;
+    if (source_width <= max_width && source_height <= max_height) {
+        return;
+    }
+
+    if ((uint64_t)source_width * max_height > (uint64_t)source_height * max_width) {
+        *output_width = max_width;
+        *output_height = (uint32_t)(((uint64_t)source_height * max_width) / source_width);
+    } else {
+        *output_height = max_height;
+        *output_width = (uint32_t)(((uint64_t)source_width * max_height) / source_height);
+    }
+    if (*output_width == 0U) {
+        *output_width = 1U;
+    }
+    if (*output_height == 0U) {
+        *output_height = 1U;
+    }
 }
 
 static lv_result_t rgb565_decoder_info(lv_image_decoder_t * decoder,
@@ -98,93 +134,185 @@ static lv_result_t rgb565_decoder_info(lv_image_decoder_t * decoder,
     }
 
     header->cf = LV_COLOR_FORMAT_RGB565A8;
-    header->w = read_be32(&png_header[16]);
-    header->h = read_be32(&png_header[20]);
+    const uint32_t source_width = read_be32(&png_header[16]);
+    const uint32_t source_height = read_be32(&png_header[20]);
+    uint32_t output_width = 0U;
+    uint32_t output_height = 0U;
+    fit_image_dimensions(source_width, source_height, &output_width, &output_height);
+    header->w = output_width;
+    header->h = output_height;
     header->stride = header->w * 2U;
     return header->w > 0U && header->h > 0U ? LV_RESULT_OK : LV_RESULT_INVALID;
+}
+
+typedef struct {
+    lv_fs_file_t file;
+    png_structp png;
+    png_infop info;
+    lv_draw_buf_t * decoded;
+    uint8_t * row;
+    const char * failure;
+    uint32_t source_width;
+    uint32_t source_height;
+    bool file_open;
+} png_decode_state_t;
+
+static void png_read_from_lvgl(png_structp png, png_bytep output, png_size_t length)
+{
+    png_decode_state_t * state = png_get_io_ptr(png);
+    uint32_t bytes_read = 0U;
+    if (length > UINT32_MAX ||
+        lv_fs_read(&state->file, output, (uint32_t)length, &bytes_read) != LV_FS_RES_OK ||
+        bytes_read != length) {
+        png_error(png, "LVGL file read failed");
+    }
 }
 
 static lv_result_t rgb565_decoder_open(lv_image_decoder_t * decoder,
                                        lv_image_decoder_dsc_t * dsc)
 {
-    lv_fs_file_t file;
-    uint32_t file_size = 0U;
-    uint32_t bytes_read = 0U;
-    uint8_t * file_data = NULL;
-    uint8_t * bgra = NULL;
-    lv_draw_buf_t * decoded = NULL;
-    png_image image = {.version = PNG_IMAGE_VERSION};
-
-    if (lv_fs_open(&file, dsc->src, LV_FS_MODE_RD) != LV_FS_RES_OK) {
+    png_decode_state_t * state = calloc(1U, sizeof(*state));
+    if (state == NULL) {
         return LV_RESULT_INVALID;
     }
-    if (lv_fs_seek(&file, 0U, LV_FS_SEEK_END) != LV_FS_RES_OK ||
-        lv_fs_tell(&file, &file_size) != LV_FS_RES_OK || file_size == 0U ||
-        lv_fs_seek(&file, 0U, LV_FS_SEEK_SET) != LV_FS_RES_OK) {
+    state->failure = "open file";
+    if (lv_fs_open(&state->file, dsc->src, LV_FS_MODE_RD) != LV_FS_RES_OK) {
+        goto cleanup;
+    }
+    state->file_open = true;
+
+    state->failure = "initialize decoder";
+    state->png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (state->png == NULL) {
+        goto cleanup;
+    }
+    state->info = png_create_info_struct(state->png);
+    if (state->info == NULL || setjmp(png_jmpbuf(state->png)) != 0) {
         goto cleanup;
     }
 
-    file_data = malloc(file_size);
-    if (file_data == NULL || lv_fs_read(&file, file_data, file_size, &bytes_read) != LV_FS_RES_OK ||
-        bytes_read != file_size || !png_image_begin_read_from_memory(&image, file_data, file_size)) {
+    png_set_read_fn(state->png, state, png_read_from_lvgl);
+    png_read_info(state->png, state->info);
+    state->source_width = png_get_image_width(state->png, state->info);
+    state->source_height = png_get_image_height(state->png, state->info);
+    const int color_type = png_get_color_type(state->png, state->info);
+    const int bit_depth = png_get_bit_depth(state->png, state->info);
+    if (png_get_interlace_type(state->png, state->info) != PNG_INTERLACE_NONE) {
+        state->failure = "interlaced PNG is unsupported";
+        goto cleanup;
+    }
+    if (bit_depth == 16) {
+        png_set_strip_16(state->png);
+    }
+    if (color_type == PNG_COLOR_TYPE_PALETTE) {
+        png_set_palette_to_rgb(state->png);
+    }
+    if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) {
+        png_set_expand_gray_1_2_4_to_8(state->png);
+    }
+    const bool has_transparency = png_get_valid(state->png, state->info, PNG_INFO_tRNS) != 0U;
+    if (has_transparency) {
+        png_set_tRNS_to_alpha(state->png);
+    }
+    if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_GRAY_ALPHA) {
+        png_set_gray_to_rgb(state->png);
+    }
+    if ((color_type & PNG_COLOR_MASK_ALPHA) == 0 && !has_transparency) {
+        png_set_add_alpha(state->png, 0xFFU, PNG_FILLER_AFTER);
+    }
+    png_read_update_info(state->png, state->info);
+
+    uint32_t output_width = 0U;
+    uint32_t output_height = 0U;
+    fit_image_dimensions(state->source_width, state->source_height,
+                         &output_width, &output_height);
+    state->failure = "allocate output";
+    state->decoded = lv_draw_buf_create(output_width, output_height,
+                                        LV_COLOR_FORMAT_RGB565A8, output_width * 2U);
+    const size_t row_size = png_get_rowbytes(state->png, state->info);
+    state->row = malloc(row_size);
+    if (state->decoded == NULL || state->row == NULL ||
+        png_get_channels(state->png, state->info) != 4U) {
         goto cleanup;
     }
 
-    image.format = PNG_FORMAT_BGRA;
-    bgra = malloc(PNG_IMAGE_SIZE(image));
-    decoded = lv_draw_buf_create(image.width, image.height, LV_COLOR_FORMAT_RGB565A8, image.width * 2U);
-    if (bgra == NULL || decoded == NULL || !png_image_finish_read(&image, NULL, bgra, 0, NULL)) {
-        goto cleanup;
-    }
+    state->failure = "decode pixels";
+    uint16_t * rgb565 = (uint16_t *)state->decoded->data;
+    uint8_t * alpha = (uint8_t *)state->decoded->data +
+                      state->decoded->header.stride * state->decoded->header.h;
+    uint32_t output_y = 0U;
+    uint32_t source_y_to_copy = state->source_height / (output_height * 2U);
+    for (uint32_t source_y = 0U; source_y < state->source_height; source_y++) {
+        png_read_row(state->png, state->row, NULL);
+        if (source_y != source_y_to_copy) {
+            continue;
+        }
 
-    uint16_t * rgb565 = (uint16_t *)decoded->data;
-    uint8_t * alpha = (uint8_t *)decoded->data + decoded->header.stride * decoded->header.h;
-    const size_t pixel_count = (size_t)image.width * image.height;
-    for (size_t pixel_index = 0U; pixel_index < pixel_count; pixel_index++) {
-        const uint8_t blue = bgra[pixel_index * 4U];
-        const uint8_t green = bgra[pixel_index * 4U + 1U];
-        const uint8_t red = bgra[pixel_index * 4U + 2U];
-        const uint8_t red5 = s_rgb565_conversion == RGB565_CONVERSION_LUT
-                                 ? s_quantize_lut[0][red]
-                                 : red >> 3;
-        const uint8_t green6 = s_rgb565_conversion == RGB565_CONVERSION_LUT
-                                   ? s_quantize_lut[1][green]
-                                   : green >> 2;
-        const uint8_t blue5 = s_rgb565_conversion == RGB565_CONVERSION_LUT
-                                  ? s_quantize_lut[0][blue]
-                                  : blue >> 3;
-        rgb565[pixel_index] = ((uint16_t)red5 << 11) + ((uint16_t)green6 << 5) + blue5;
-        alpha[pixel_index] = bgra[pixel_index * 4U + 3U];
-    }
+        for (uint32_t output_x = 0U; output_x < output_width; output_x++) {
+            const uint32_t source_x = (uint32_t)(((uint64_t)(output_x * 2U + 1U) *
+                                                  state->source_width) /
+                                                 (output_width * 2U));
+            const uint8_t * pixel = &state->row[source_x * 4U];
+            const uint8_t red5 = s_rgb565_conversion == RGB565_CONVERSION_LUT
+                                     ? s_quantize_lut[0][pixel[0]]
+                                     : pixel[0] >> 3;
+            const uint8_t green6 = s_rgb565_conversion == RGB565_CONVERSION_LUT
+                                       ? s_quantize_lut[1][pixel[1]]
+                                       : pixel[1] >> 2;
+            const uint8_t blue5 = s_rgb565_conversion == RGB565_CONVERSION_LUT
+                                      ? s_quantize_lut[0][pixel[2]]
+                                      : pixel[2] >> 3;
+            const size_t output_index = (size_t)output_y * output_width + output_x;
+            rgb565[output_index] = ((uint16_t)red5 << 11) + ((uint16_t)green6 << 5) + blue5;
+            alpha[output_index] = pixel[3];
+        }
 
-    dsc->decoded = decoded;
+        output_y++;
+        if (output_y < output_height) {
+            source_y_to_copy = (uint32_t)(((uint64_t)(output_y * 2U + 1U) *
+                                           state->source_height) /
+                                          (output_height * 2U));
+        }
+    }
+    png_read_end(state->png, NULL);
+
+    dsc->decoded = state->decoded;
     if (!dsc->args.no_cache && lv_image_cache_is_enabled()) {
         lv_image_cache_data_t search_key = {
             .src_type = dsc->src_type,
             .src = dsc->src,
-            .slot.size = decoded->data_size,
+            .slot.size = state->decoded->data_size,
         };
-        dsc->cache_entry = lv_image_decoder_add_to_cache(decoder, &search_key, decoded, NULL);
+        dsc->cache_entry = lv_image_decoder_add_to_cache(decoder, &search_key,
+                                                         state->decoded, NULL);
         if (dsc->cache_entry == NULL) {
             dsc->decoded = NULL;
             goto cleanup;
         }
     }
 
-    png_image_free(&image);
-    free(bgra);
-    free(file_data);
-    lv_fs_close(&file);
+    state->decoded = NULL;
+    png_destroy_read_struct(&state->png, &state->info, NULL);
+    free(state->row);
+    lv_fs_close(&state->file);
+    free(state);
     return LV_RESULT_OK;
 
 cleanup:
-    if (decoded != NULL) {
-        lv_draw_buf_destroy(decoded);
+    ESP_LOGE(TAG, "PNG decode failed (%s): %s size=%ux%u",
+             state->failure, (const char *)dsc->src,
+             (unsigned int)state->source_width, (unsigned int)state->source_height);
+    if (state->decoded != NULL) {
+        lv_draw_buf_destroy(state->decoded);
     }
-    png_image_free(&image);
-    free(bgra);
-    free(file_data);
-    lv_fs_close(&file);
+    if (state->png != NULL) {
+        png_destroy_read_struct(&state->png, &state->info, NULL);
+    }
+    free(state->row);
+    if (state->file_open) {
+        lv_fs_close(&state->file);
+    }
+    free(state);
     return LV_RESULT_INVALID;
 }
 
@@ -224,6 +352,25 @@ static bool set_rgb565_conversion(rgb565_conversion_t conversion)
     return slide_player_reload();
 }
 
+static bool set_folder_fps(const char * command)
+{
+    if (strncasecmp(command, "set_", 4U) != 0) {
+        return false;
+    }
+
+    char * suffix = NULL;
+    errno = 0;
+    const unsigned long fps = strtoul(command + 4U, &suffix, 10);
+    if (errno != 0 || suffix == command + 4U || strcasecmp(suffix, "fps") != 0 ||
+        fps == 0U || fps > MAX_FOLDER_FPS) {
+        return false;
+    }
+
+    s_folder_fps = (uint32_t)fps;
+    ESP_LOGI(TAG, "Folder playback rate: %u FPS", (unsigned int)s_folder_fps);
+    return true;
+}
+
 static void slide_serial_task(void * arg)
 {
     (void)arg;
@@ -251,6 +398,8 @@ static void slide_serial_task(void * arg)
             requested = set_rgb565_conversion(RGB565_CONVERSION_LUT);
         } else if (strcasecmp(command, "rgb565_shift") == 0) {
             requested = set_rgb565_conversion(RGB565_CONVERSION_SHIFT);
+        } else if (set_folder_fps(command)) {
+            requested = true;
         } else {
             char * end = NULL;
             errno = 0;
@@ -275,7 +424,8 @@ static esp_err_t slide_serial_start(void)
                     SERIAL_TASK_PRIORITY, &s_serial_task_handle) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "Serial controls ready: next, last, rgb565_lut, rgb565_shift, 1-%u",
+    ESP_LOGI(TAG, "Serial controls ready: next, last, set_<1-%u>fps, rgb565_lut, rgb565_shift, 1-%u",
+             (unsigned int)MAX_FOLDER_FPS,
              (unsigned int)s_slide_count);
     return ESP_OK;
 }
@@ -342,6 +492,20 @@ static bool build_slide_path(uint32_t slide_index, const char * extension,
     return written > 0 && (size_t)written < output_size;
 }
 
+static bool build_folder_frame_path(uint32_t slide_index, uint32_t frame_number,
+                                    char * output, size_t output_size)
+{
+    if (output == NULL || output_size == 0U || slide_index >= s_slide_count ||
+        frame_number == 0U) {
+        return false;
+    }
+
+    const int written = snprintf(output, output_size, "%s/%u/%u.png", SLIDE_ASSET_DIR,
+                                 (unsigned int)(slide_index + FIRST_SLIDE_NUMBER),
+                                 (unsigned int)frame_number);
+    return written > 0 && (size_t)written < output_size;
+}
+
 static bool parse_slide_number(const char * filename, uint32_t * slide_number)
 {
     if (filename == NULL || slide_number == NULL || filename[0] < '1' || filename[0] > '9') {
@@ -353,6 +517,31 @@ static bool parse_slide_number(const char * filename, uint32_t * slide_number)
     const unsigned long number = strtoul(filename, &extension, 10);
     if (errno != 0 || number == 0U || number > UINT32_MAX ||
         (strcmp(extension, ".png") != 0 && strcmp(extension, ".gif") != 0)) {
+        return false;
+    }
+
+    *slide_number = (uint32_t)number;
+    return true;
+}
+
+static bool parse_slide_directory_number(const char * filename, uint32_t * slide_number)
+{
+    if (filename == NULL || slide_number == NULL || filename[0] < '1' || filename[0] > '9') {
+        return false;
+    }
+
+    char * end = NULL;
+    errno = 0;
+    const unsigned long number = strtoul(filename, &end, 10);
+    if (errno != 0 || number == 0U || number > UINT32_MAX || *end != '\0') {
+        return false;
+    }
+
+    char path[SLIDE_PLAYER_IMAGE_PATH_MAX_LEN];
+    const int written = snprintf(path, sizeof(path), "%s/%s", BSP_SD_MOUNT_POINT, filename);
+    struct stat info;
+    if (written <= 0 || (size_t)written >= sizeof(path) || stat(path, &info) != 0 ||
+        !S_ISDIR(info.st_mode)) {
         return false;
     }
 
@@ -379,7 +568,8 @@ static esp_err_t detect_slide_count(void)
         }
 
         uint32_t slide_number = 0U;
-        if (parse_slide_number(entry->d_name, &slide_number) &&
+                if ((parse_slide_number(entry->d_name, &slide_number) ||
+                         parse_slide_directory_number(entry->d_name, &slide_number)) &&
             slide_number > highest_slide_number) {
             highest_slide_number = slide_number;
         }
@@ -392,7 +582,8 @@ static esp_err_t detect_slide_count(void)
         return ESP_FAIL;
     }
     if (highest_slide_number == 0U) {
-        ESP_LOGE(TAG, "No numbered PNG or GIF slides found in %s", BSP_SD_MOUNT_POINT);
+        ESP_LOGE(TAG, "No numbered PNG, GIF, or frame directories found in %s",
+                 BSP_SD_MOUNT_POINT);
         return ESP_ERR_NOT_FOUND;
     }
 
@@ -470,9 +661,12 @@ static void slide_reader_task(void * arg)
     (void)arg;
 
     slide_load_request_t request;
+    uint32_t next_frame_number = 0U;
+    TickType_t wait_ticks = portMAX_DELAY;
     while (true) {
-        if (xQueueReceive(s_request_queue, &request, portMAX_DELAY) != pdTRUE) {
-            continue;
+        const bool new_request = xQueueReceive(s_request_queue, &request, wait_ticks) == pdTRUE;
+        if (new_request) {
+            next_frame_number = 0U;
         }
 
         slide_player_load_result_t result = {
@@ -489,14 +683,41 @@ static void slide_reader_task(void * arg)
                 ESP_LOGE(TAG, "Failed to wait for display SPI: %s", esp_err_to_name(wait_ret));
                 result.error_no = EIO;
             } else {
-                result.success = probe_slide_file(&result);
-                if (!result.success && result.error_no == ENOENT &&
-                    build_slide_path(result.slide_index, "gif", result.image_path,
-                                     sizeof(result.image_path))) {
+                if (next_frame_number != 0U) {
+                    if (build_folder_frame_path(result.slide_index, next_frame_number,
+                                                result.image_path, sizeof(result.image_path))) {
+                        result.success = probe_slide_file(&result);
+                    }
+                    if (!result.success && result.error_no == ENOENT &&
+                        next_frame_number != 1U &&
+                        build_folder_frame_path(result.slide_index, 1U, result.image_path,
+                                                sizeof(result.image_path))) {
+                        result.success = probe_slide_file(&result);
+                        next_frame_number = 1U;
+                    }
+                } else {
                     result.success = probe_slide_file(&result);
+                    if (!result.success && result.error_no == ENOENT &&
+                        build_slide_path(result.slide_index, "gif", result.image_path,
+                                         sizeof(result.image_path))) {
+                        result.success = probe_slide_file(&result);
+                    }
+                    if (!result.success && result.error_no == ENOENT &&
+                        build_folder_frame_path(result.slide_index, 1U, result.image_path,
+                                                sizeof(result.image_path))) {
+                        result.success = probe_slide_file(&result);
+                        if (result.success) {
+                            next_frame_number = 1U;
+                            ESP_LOGI(TAG, "[%u] Playing folder slide=%u at %u FPS path=%s bytes=%u",
+                                     (unsigned int)result.request_id,
+                                     (unsigned int)(result.slide_index + FIRST_SLIDE_NUMBER),
+                                     (unsigned int)s_folder_fps, result.image_path,
+                                     (unsigned int)result.bytes_read);
+                        }
+                    }
                 }
 #if BOARD_HAS_BUTTON
-                if (!result.success && result.slide_index != 0U) {
+                if (!result.success && next_frame_number == 0U && result.slide_index != 0U) {
                     ESP_LOGI(TAG, "[%u] Falling back to slide 1",
                              (unsigned int)result.request_id);
                     result.slide_index = 0U;
@@ -511,6 +732,15 @@ static void slide_reader_task(void * arg)
                     }
                 }
 #endif
+            }
+
+            if (result.success && next_frame_number != 0U) {
+                result.animation_frame = true;
+                next_frame_number++;
+                wait_ticks = pdMS_TO_TICKS((1000U + s_folder_fps - 1U) / s_folder_fps);
+            } else {
+                next_frame_number = 0U;
+                wait_ticks = portMAX_DELAY;
             }
             bsp_display_unlock();
         }

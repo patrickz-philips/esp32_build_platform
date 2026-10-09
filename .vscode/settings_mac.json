@@ -13,7 +13,7 @@
     "no_proxy": "localhost,127.0.0.1,::1"
   },
   "idf.flashType": "UART",
-  "idf.buildPath": "${workspaceFolder}/build/esp32_c6_lcd_0_96_slide_player",
+  "idf.buildPath": "${workspaceFolder}/build/amoled_175_lightring_button",
   "cmake.generator": "Ninja",
   "cmake.configureOnOpen": false,
   "cmake.useCMakePresets": "never",

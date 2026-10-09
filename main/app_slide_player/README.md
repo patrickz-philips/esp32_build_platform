@@ -1,12 +1,20 @@
 # Slide Player App
 
-Displays numbered PNG or animated GIF slides from the SD card. At startup, the
-app scans the SD root and uses the highest numbered file as the slide count.
+Displays numbered PNG, animated GIF, or PNG frame-directory slides from the SD
+card. At startup, the app scans the SD root and uses the highest numbered asset
+as the slide count.
 Touch boards change slides with horizontal gestures. Non-touch button boards
 advance on a button press and wrap from the highest number to slide 1. For each
 positive integer filename without leading zeroes, the app loads
 `/sdcard/<number>.png` first and falls back to
-`/sdcard/<number>.gif` when the PNG is absent.
+`/sdcard/<number>.gif` when the PNG is absent. If neither file exists, a
+numbered directory such as `/sdcard/2/` loops its consecutively numbered PNG
+frames (`1.png`, `2.png`, ...) at 20 FPS by default. A PNG or GIF file with the
+same number takes precedence over the directory.
+
+PNG files larger than the display are decoded row by row and proportionally
+downsampled to fit the display, avoiding a full-size pixel buffer in RAM.
+Interlaced PNG files are not supported.
 
 ## Required Capabilities
 
@@ -65,6 +73,7 @@ The primary console accepts one command per line at 115200 baud:
 - `last`: show the previous slide and wrap at the beginning.
 - `rgb565_lut`: use LUT-based nearest-level PNG RGB565 quantization and reload the current slide.
 - `rgb565_shift`: use legacy truncating shifts for PNG RGB565 conversion and reload the current slide.
+- `set_<fps>fps`: set frame-directory playback to 1-1000 FPS, for example `set_30fps`.
 - Any number up to the highest numbered SD asset: show that slide.
 
 On macOS, build `qilin-display-mac-command/Qilin Display.app` with the included
@@ -76,6 +85,6 @@ Return to open that slide.
 ## Device Checks
 
 Builds validate component wiring only. On each board, verify SD mount behavior,
-PNG and GIF decoding, animation playback, left/right gestures, boundary
-handling, rapid gesture coalescing, missing-file recovery, and full-screen
-layout.
+PNG and GIF decoding, frame-directory looping and rate changes, animation
+playback, left/right gestures, boundary handling, rapid gesture coalescing,
+missing-file recovery, and full-screen layout.
