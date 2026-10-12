@@ -13,7 +13,7 @@ BOARD_DESC=(
     "Waveshare ESP32-S3 Touch LCD 1.28\" (round, IMU-only)"
     "Spotpear ESP32-C6 LCD 0.96\" (button + SD)"
 )
-PROJECTS=(slide_player salary_cat acc_data battery_monitor lightring_button lightring_button_2)
+PROJECTS=(slide_player salary_cat acc_data battery_monitor lightring_button lightring_button_2 hairdryer)
 PROJ_DESC=(
     "PNG/GIF slideshow (touch or button)"
     "Salary cat (GIF + MP3 from SD)"
@@ -21,6 +21,7 @@ PROJ_DESC=(
     "Battery / PMU monitor (AXP2101)"
     "WS2812 light ring + button"
     "WS2812 RGB swoosh + button"
+    "Hairdryer WS2812 + button GPIO test"
 )
 
 read_cur() { if [ -f "$1" ]; then tr -d '[:space:]' <"$1"; else printf '%s' "$2"; fi; }

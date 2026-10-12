@@ -102,12 +102,13 @@ compatibility notes below.
 
 ## Project Compatibility
 
-The source of truth is [supported_apps.txt](supported_apps.txt). Only `acc_data`
-is compatible, and it runs IMU-only.
+The source of truth is [supported_apps.txt](supported_apps.txt). `acc_data`
+runs IMU-only; `hairdryer` uses only expansion GPIOs.
 
 | App | Status | Reason |
 |:----|:-------|:-------|
 | `acc_data` | Supported | Uses the QMI8658 IMU + GPIO0 button; PMU and SD paths are compiled out |
+| `hairdryer` | Supported | Holds WS2812 data GPIO15 low and samples active-low buttons on GPIO33, GPIO21, GPIO18, and GPIO17 |
 | `slide_player` | Incompatible | Requires micro-SD storage (`#error` without `BOARD_HAS_SD`) |
 | `salary_cat` | Incompatible | Requires micro-SD + ES8311 audio + AXP2101 PMU |
 | `battery_monitor` | Incompatible | Requires the AXP2101 PMU register interface |
@@ -120,6 +121,10 @@ from an AXP2101 PMU. This board has neither, so the app is built with
   stream is shown live on the LCD but not recorded.
 - The PMU task, power-button handling, and shutdown are guarded off; the battery
   label stays at `0%`.
+
+`hairdryer` enables the internal pull-ups on its four button inputs and logs their
+raw levels once per second. Its light effect is intentionally not implemented;
+GPIO15 is configured as a low WS2812 data output until an effect is defined.
 
 ## Build Configuration and Limits
 

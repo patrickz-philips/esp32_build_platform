@@ -15,6 +15,7 @@
 
 // Current project integration status, not raw hardware capability.
 #define BOARD_FEATURE_ACC_DATA     1
+#define BOARD_FEATURE_HAIRDRYER    1
 
 // On-board GPIO map. Verified from the official Waveshare demo DEV_Config.h and
 // Setup207_GC9A01.h; do not change without an authoritative source.
@@ -28,5 +29,10 @@
 #define BOARD_LCD_BL_GPIO       2
 #define BOARD_TOUCH_INT_GPIO    5
 #define BOARD_TOUCH_RST_GPIO    13
+#define BOARD_HAIRDRYER_WS2812_GPIO 15
+#define BOARD_HAIRDRYER_BUTTON_1_GPIO 33
+#define BOARD_HAIRDRYER_BUTTON_2_GPIO 21
+#define BOARD_HAIRDRYER_BUTTON_3_GPIO 18
+#define BOARD_HAIRDRYER_BUTTON_4_GPIO 17
 #define BOARD_LCD_H_RES         240
 #define BOARD_LCD_V_RES         240
