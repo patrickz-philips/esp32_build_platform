@@ -5,6 +5,11 @@ endif()
 idf_component_register(
 	SRCS
 		"app_hairdryer.c"
+		"hairdryer_buttons.c"
+		"lightring/hairdryer_lightring.c"
+	INCLUDE_DIRS
+		"."
+		"lightring/include"
 	PRIV_REQUIRES
 		esp_driver_gpio
 		freertos

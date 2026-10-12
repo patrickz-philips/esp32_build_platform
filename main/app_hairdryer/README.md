@@ -14,21 +14,43 @@ and button GPIO assignments. Compatibility is declared in each board's
 
 - GPIO15 is configured as a WS2812 data output and held low. No light effect or
   WS2812 frame transmission is implemented yet.
-- GPIO33, GPIO21, GPIO18, and GPIO17 are configured as inputs with internal
-  pull-ups for active-low buttons.
-- All four raw GPIO levels are logged once per second.
+- GPIO18 is the active-low mode button. One `BUTTON_MODE_CLICK` event is emitted
+  after each complete press and release.
+- GPIO17 is the active-low cold button. It emits independent
+  `BUTTON_COLD_PRESSED` and `BUTTON_COLD_RELEASED` events.
+- GPIO33 and GPIO21 form a three-position switch:
+  - `0/1`: `BUTTON_SWITCH_OFF`
+  - `1/1`: `BUTTON_SWITCH_LOW`
+  - `1/0`: `BUTTON_SWITCH_HIGH`
+- The invalid `0/0` switch combination is ignored and the previous valid state
+  is retained. Switch events are emitted only after the state changes.
+- All inputs use internal pull-ups and a 30 ms debounce period.
 
 ## Task Model
 
-The ESP-IDF `main` task configures all five GPIOs and runs the one-second polling
-loop. No additional task or runtime shutdown path is required.
+The `hairdryer_buttons` task scans all four GPIOs every 10 ms and posts the three
+independently named event categories to one FreeRTOS queue. The
+`hairdryer_dispatch` task receives them and calls the matching placeholder
+function under `lightring/`. No runtime shutdown path is required.
 
 ## Model Contract
 
-There is no LVGL model. This app currently performs GPIO bring-up only.
+There is no LVGL model. The light-ring handlers are placeholders for the
+effects that will be added later.
+
+## Host Check
+
+```sh
+cc -std=c11 -Wall -Wextra -Werror \
+  -I main/app_hairdryer \
+  main/app_hairdryer/test/test_buttons_host.c \
+  main/app_hairdryer/hairdryer_buttons.c \
+  -o /tmp/hairdryer_buttons_test &&
+  /tmp/hairdryer_buttons_test
+```
 
 ## Device Checks
 
-The build validates the GPIO driver wiring only. On the target board, verify
-that GPIO15 stays low, each unpressed button reads high, and grounding each
-button input makes only its corresponding logged level read low.
+On the target board, verify each event name, the 30 ms debounce behavior, no
+mode event until release, both cold-button edge events, each switch state, and
+that the temporary `0/0` switch combination generates no event.

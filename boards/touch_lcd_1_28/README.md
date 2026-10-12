@@ -122,9 +122,10 @@ from an AXP2101 PMU. This board has neither, so the app is built with
 - The PMU task, power-button handling, and shutdown are guarded off; the battery
   label stays at `0%`.
 
-`hairdryer` enables the internal pull-ups on its four button inputs and logs their
-raw levels once per second. Its light effect is intentionally not implemented;
-GPIO15 is configured as a low WS2812 data output until an effect is defined.
+`hairdryer` debounces its mode, cold, and three-position switch inputs and sends
+named events to its light-ring dispatcher. Its light effect is intentionally not
+implemented; GPIO15 is configured as a low WS2812 data output until an effect is
+defined.
 
 ## Build Configuration and Limits
 
