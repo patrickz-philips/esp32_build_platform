@@ -12,8 +12,8 @@ and button GPIO assignments. Compatibility is declared in each board's
 
 ## Behavior
 
-- GPIO15 is configured as a WS2812 data output and held low. No light effect or
-  WS2812 frame transmission is implemented yet.
+- GPIO15 drives the imported 24-LED WS2812 light-ring package through the
+  ESP32-S3 RMT peripheral.
 - GPIO18 is the active-low mode button. One `BUTTON_MODE_CLICK` event is emitted
   after each complete press and release.
 - GPIO17 is the active-low cold button. It emits independent
@@ -30,13 +30,16 @@ and button GPIO assignments. Compatibility is declared in each board's
 
 The `hairdryer_buttons` task scans all four GPIOs every 10 ms and posts the three
 independently named event categories to one FreeRTOS queue. The
-`hairdryer_dispatch` task receives them and calls the matching placeholder
-function under `lightring/`. No runtime shutdown path is required.
+`hairdryer_dispatch` task receives them and calls the matching API under
+`lightring/`. The light-ring package owns a 10 ms render task.
 
 ## Model Contract
 
-There is no LVGL model. The light-ring handlers are placeholders for the
-effects that will be added later.
+There is no LVGL model. Mode clicks cycle `THERMO`, `HOT`, and `WARM`; cold
+press/release blends an independent blue palette on/off without changing the
+selected mode. The switch selects off, low, or high speed. Off fades the
+low-speed effect out within 300 ms; low/high restores the retained mode with a
+direct 300 ms fade-in.
 
 ## Host Check
 

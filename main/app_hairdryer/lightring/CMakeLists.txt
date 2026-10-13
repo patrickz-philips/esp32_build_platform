@@ -1,0 +1,11 @@
+idf_component_register(
+	SRCS
+		"src/lightring.c"
+		"src/lightring_effects.c"
+		"src/ws2812_esp.c"
+	INCLUDE_DIRS
+		"include"
+	REQUIRES
+		esp_driver_rmt
+		freertos
+		log)

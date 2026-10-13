@@ -1,0 +1,174 @@
+#include <stddef.h>
+
+#include "lightring_effects.h"
+#include "lightring_calibration.inc"
+
+typedef struct {
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+} lr_color_t;
+
+static const uint8_t s_logical_to_physical[LIGHTRING_LED_COUNT] = {
+    0U, 7U, 6U, 5U, 4U, 3U, 2U, 1U,
+    10U, 9U, 8U, 23U, 22U, 21U, 20U, 19U,
+    18U, 17U, 16U, 15U, 14U, 13U, 12U, 11U,
+};
+
+static const uint8_t s_color_group[LIGHTRING_LED_COUNT] = {
+    0U, 0U, 0U, 1U, 2U, 2U, 1U, 1U,
+    1U, 1U, 0U, 0U, 0U, 0U, 0U, 1U,
+    1U, 1U, 2U, 2U, 2U, 1U, 1U, 1U,
+};
+
+static const lr_color_t s_mode_colors[LIGHTRING_MODE_COUNT][3] = {
+    {
+        { 215U, 39U, 255U },
+        { 101U, 66U, 255U },
+        { 51U, 160U, 255U },
+    },
+    {
+        { 255U, 64U, 64U },
+        { 255U, 95U, 95U },
+        { 255U, 123U, 123U },
+    },
+    {
+        { 231U, 174U, 0U },
+        { 255U, 211U, 79U },
+        { 221U, 189U, 91U },
+    },
+};
+
+static const lr_color_t s_cold_colors[3] = {
+    { 51U, 160U, 255U },
+    { 134U, 208U, 255U },
+    { 199U, 233U, 255U },
+};
+
+uint8_t lightring_framebuffer[LIGHTRING_LED_COUNT * 3U];
+
+static uint8_t mix8(uint8_t from, uint8_t to, uint8_t amount)
+{
+    return (uint8_t)((((uint16_t)from * (uint16_t)(255U - amount)) +
+                      ((uint16_t)to * amount) + 127U) / 255U);
+}
+
+static uint8_t scale8(uint8_t value, uint8_t scale)
+{
+    return (uint8_t)(((uint16_t)value * scale) / 255U);
+}
+
+static uint8_t linear_mix(uint8_t from, uint8_t to, uint32_t elapsed, uint32_t duration)
+{
+    uint32_t weighted = ((uint32_t)from * (duration - elapsed)) +
+                        ((uint32_t)to * elapsed);
+    return (uint8_t)((weighted + duration / 2U) / duration);
+}
+
+static uint8_t track_brightness(lightring_speed_t speed, int outer, uint32_t phase_ms)
+{
+    if (speed == LIGHTRING_SPEED_OFF) {
+        return 0U;
+    }
+    if (speed == LIGHTRING_SPEED_LOW && outer) {
+        return 0U;
+    }
+
+    uint8_t start;
+    uint8_t peak;
+    if (speed == LIGHTRING_SPEED_LOW) {
+        start = 160U;
+        peak = 255U;
+    } else if (outer) {
+        start = 40U;
+        peak = 200U;
+    } else {
+        start = 230U;
+        peak = 80U;
+    }
+
+    phase_ms %= LIGHTRING_EFFECT_PERIOD_MS;
+    if (phase_ms < 500U) {
+        return start;
+    }
+    if (phase_ms < 1000U) {
+        return linear_mix(start, peak, phase_ms - 500U, 500U);
+    }
+    if (phase_ms < 1900U) {
+        return peak;
+    }
+    return linear_mix(peak, start, phase_ms - 1900U, 600U);
+}
+
+static lr_color_t effect_color(const lightring_frame_t *frame, uint8_t group)
+{
+    const lr_color_t *from = &s_mode_colors[frame->from_mode][group];
+    const lr_color_t *to = &s_mode_colors[frame->to_mode][group];
+    const lr_color_t *cold = &s_cold_colors[group];
+    lr_color_t color = {
+        .red = mix8(from->red, to->red, frame->mode_mix),
+        .green = mix8(from->green, to->green, frame->mode_mix),
+        .blue = mix8(from->blue, to->blue, frame->mode_mix),
+    };
+    color.red = mix8(color.red, cold->red, frame->cold_mix);
+    color.green = mix8(color.green, cold->green, frame->cold_mix);
+    color.blue = mix8(color.blue, cold->blue, frame->cold_mix);
+    return color;
+}
+
+static uint8_t clamp_channel(int32_t value)
+{
+    if (value < 0) {
+        return 0U;
+    }
+    if (value > 255) {
+        return 255U;
+    }
+    return (uint8_t)value;
+}
+
+static lr_color_t calibrated_color(lr_color_t color, uint8_t brightness)
+{
+    int32_t red = s_srgb_lut[color.red];
+    int32_t green = s_srgb_lut[color.green];
+    int32_t blue = s_srgb_lut[color.blue];
+    lr_color_t corrected = {
+        .red = clamp_channel((2342 * red + 1302 * green + 157 * blue) / 4096),
+        .green = clamp_channel((141 * red + 2339 * green - 52 * blue) / 4096),
+        .blue = clamp_channel((18 * red + 24 * green + 1351 * blue) / 4096),
+    };
+    uint8_t level = s_brightness_lut[brightness];
+    corrected.red = s_red_lut[scale8(corrected.red, level)];
+    corrected.green = s_green_lut[scale8(corrected.green, level)];
+    corrected.blue = s_blue_lut[scale8(corrected.blue, level)];
+    return corrected;
+}
+
+void lightring_render_frame(const lightring_frame_t *frame)
+{
+    if (frame == NULL) {
+        return;
+    }
+
+    uint8_t from_inner = track_brightness(
+        frame->from_speed, 0, frame->from_phase_ms);
+    uint8_t from_outer = track_brightness(
+        frame->from_speed, 1, frame->from_phase_ms);
+    uint8_t to_inner = track_brightness(
+        frame->to_speed, 0, frame->to_phase_ms);
+    uint8_t to_outer = track_brightness(
+        frame->to_speed, 1, frame->to_phase_ms);
+
+    for (uint8_t logical = 0U; logical < LIGHTRING_LED_COUNT; ++logical) {
+        uint8_t group = s_color_group[logical];
+        int outer = logical >= 8U;
+        uint8_t from_level = outer ? from_outer : from_inner;
+        uint8_t to_level = outer ? to_outer : to_inner;
+        uint8_t level = mix8(from_level, to_level, frame->speed_mix);
+        lr_color_t color = calibrated_color(effect_color(frame, group), level);
+        uint16_t offset = (uint16_t)(s_logical_to_physical[logical] * 3U);
+        lightring_framebuffer[offset] = color.green;
+        lightring_framebuffer[offset + 1U] = color.red;
+        lightring_framebuffer[offset + 2U] = color.blue;
+    }
+}

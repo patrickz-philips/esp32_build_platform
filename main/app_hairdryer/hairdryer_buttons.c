@@ -25,8 +25,8 @@ static button_edge_t update_button(hairdryer_debounced_button_t *button,
     return pressed ? BUTTON_EDGE_PRESSED : BUTTON_EDGE_RELEASED;
 }
 
-static bool decode_switch(hairdryer_button_levels_t levels,
-                          hairdryer_button_switch_state_t *state)
+bool hairdryer_button_switch_decode(hairdryer_button_levels_t levels,
+                                    hairdryer_button_switch_state_t *state)
 {
     if (levels.switch_off == 0U && levels.switch_high == 1U) {
         *state = HAIRDRYER_BUTTON_SWITCH_OFF;
@@ -58,7 +58,8 @@ void hairdryer_buttons_init(hairdryer_buttons_t *buttons,
         .switch_last_change_ms = now_ms,
     };
 
-    buttons->switch_candidate_valid = decode_switch(levels, &buttons->switch_candidate);
+    buttons->switch_candidate_valid =
+        hairdryer_button_switch_decode(levels, &buttons->switch_candidate);
     buttons->switch_stable_valid = buttons->switch_candidate_valid;
     buttons->switch_stable = buttons->switch_candidate;
 }
@@ -90,7 +91,7 @@ size_t hairdryer_buttons_poll(hairdryer_buttons_t *buttons,
     }
 
     hairdryer_button_switch_state_t switch_state;
-    if (!decode_switch(levels, &switch_state)) {
+    if (!hairdryer_button_switch_decode(levels, &switch_state)) {
         buttons->switch_candidate_valid = false;
         return event_count;
     }

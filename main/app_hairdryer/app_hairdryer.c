@@ -8,7 +8,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "hairdryer_buttons.h"
-#include "hairdryer_lightring.h"
+#include "lightring.h"
 
 #if !defined(BOARD_FEATURE_HAIRDRYER) || !BOARD_FEATURE_HAIRDRYER
 #error "hairdryer requires BOARD_FEATURE_HAIRDRYER"
@@ -91,32 +91,40 @@ static void button_task(void *arg)
 
 static void dispatch_button_event(const hairdryer_button_event_t *event)
 {
+    int result = -1;
+
     switch (event->source) {
     case HAIRDRYER_BUTTON_SOURCE_MODE:
         ESP_LOGI(TAG, "BUTTON_MODE_CLICK");
-        hairdryer_lightring_button_mode_click();
+        result = lightring_change_mode(
+            (lightring_mode_t)((lightring_get_mode() + 1) % LIGHTRING_MODE_COUNT));
         break;
     case HAIRDRYER_BUTTON_SOURCE_COLD:
         if (event->value.cold == HAIRDRYER_BUTTON_COLD_EVENT_PRESSED) {
             ESP_LOGI(TAG, "BUTTON_COLD_PRESSED");
-            hairdryer_lightring_button_cold_pressed();
+            result = lightring_cold_on();
         } else {
             ESP_LOGI(TAG, "BUTTON_COLD_RELEASED");
-            hairdryer_lightring_button_cold_released();
+            result = lightring_cold_off();
         }
         break;
     case HAIRDRYER_BUTTON_SOURCE_SWITCH:
         if (event->value.switch_state == HAIRDRYER_BUTTON_SWITCH_OFF) {
             ESP_LOGI(TAG, "BUTTON_SWITCH_OFF");
-            hairdryer_lightring_button_switch_off();
+            result = lightring_change_speed(LIGHTRING_SPEED_OFF);
         } else if (event->value.switch_state == HAIRDRYER_BUTTON_SWITCH_LOW) {
             ESP_LOGI(TAG, "BUTTON_SWITCH_LOW");
-            hairdryer_lightring_button_switch_low();
+            result = lightring_change_speed(LIGHTRING_SPEED_LOW);
         } else {
             ESP_LOGI(TAG, "BUTTON_SWITCH_HIGH");
-            hairdryer_lightring_button_switch_high();
+            result = lightring_change_speed(LIGHTRING_SPEED_HIGH);
         }
         break;
+    }
+
+    if (result != 0) {
+        ESP_LOGW(TAG, "Light ring rejected button event source=%d status=%d",
+                 event->source, lightring_get_status());
     }
 }
 
@@ -146,15 +154,12 @@ static void runtime_stop(void)
         vQueueDelete(s_button_event_queue);
         s_button_event_queue = NULL;
     }
+    lightring_deinit();
 }
 
 static esp_err_t runtime_start(void)
 {
     esp_err_t err = button_gpio_init();
-    if (err != ESP_OK) {
-        return err;
-    }
-    err = hairdryer_lightring_init();
     if (err != ESP_OK) {
         return err;
     }
@@ -164,6 +169,30 @@ static esp_err_t runtime_start(void)
     if (s_button_event_queue == NULL) {
         return ESP_ERR_NO_MEM;
     }
+
+    const hairdryer_button_levels_t levels = read_button_levels();
+    hairdryer_button_switch_state_t switch_state;
+    const bool switch_valid = hairdryer_button_switch_decode(levels, &switch_state);
+    const lightring_config_t lightring_config = {
+        .ws2812 = {
+            .gpio_num = BOARD_HAIRDRYER_WS2812_GPIO,
+            .led_count = LIGHTRING_LED_COUNT,
+        },
+        .initial_mode = LIGHTRING_MODE_THERMO,
+        .initial_speed =
+            !switch_valid || switch_state == HAIRDRYER_BUTTON_SWITCH_OFF
+                ? LIGHTRING_SPEED_OFF
+                : (switch_state == HAIRDRYER_BUTTON_SWITCH_HIGH
+                       ? LIGHTRING_SPEED_HIGH
+                       : LIGHTRING_SPEED_LOW),
+        .task_stack_bytes = 3072U,
+        .task_priority = 5U,
+    };
+    if (lightring_init(&lightring_config) != 0) {
+        runtime_stop();
+        return ESP_FAIL;
+    }
+
     if (xTaskCreate(dispatch_task, "hairdryer_dispatch", DISPATCH_TASK_STACK_SIZE, NULL,
                     DISPATCH_TASK_PRIORITY, &s_dispatch_task) != pdPASS ||
         xTaskCreate(button_task, "hairdryer_buttons", BUTTON_TASK_STACK_SIZE, NULL,

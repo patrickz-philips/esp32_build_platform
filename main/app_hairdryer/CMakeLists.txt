@@ -6,12 +6,15 @@ idf_component_register(
 	SRCS
 		"app_hairdryer.c"
 		"hairdryer_buttons.c"
-		"lightring/hairdryer_lightring.c"
+		"lightring/src/lightring.c"
+		"lightring/src/lightring_effects.c"
+		"lightring/src/ws2812_esp.c"
 	INCLUDE_DIRS
 		"."
 		"lightring/include"
 	PRIV_REQUIRES
 		esp_driver_gpio
+		esp_driver_rmt
 		freertos
 		log
 		$ENV{SELECTED_BOARD})

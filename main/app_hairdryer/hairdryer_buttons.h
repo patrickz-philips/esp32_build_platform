@@ -64,6 +64,8 @@ typedef struct {
 void hairdryer_buttons_init(hairdryer_buttons_t *buttons,
                             hairdryer_button_levels_t levels,
                             uint32_t now_ms);
+bool hairdryer_button_switch_decode(hairdryer_button_levels_t levels,
+                                    hairdryer_button_switch_state_t *state);
 size_t hairdryer_buttons_poll(hairdryer_buttons_t *buttons,
                               hairdryer_button_levels_t levels,
                               uint32_t now_ms,
