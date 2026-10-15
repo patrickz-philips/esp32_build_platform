@@ -14,3 +14,7 @@
 	path = lvgl/salary_cat
 	url = https://github.com/patrickz-philips/lvgl_salary_cat.git
 	branch = main
+[submodule "main/app_lightring_button"]
+	path = main/app_lightring_button
+	url = https://github.com/patrickz-philips/esp_app_lightring_button.git
+	branch = main

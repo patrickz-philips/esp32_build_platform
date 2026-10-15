@@ -54,16 +54,22 @@ The project is organized as a small layered application:
 |   |-- app_salary_cat/           # salary_cat entry and audio adapter
 |   |-- app_slide_player/         # slide_player component migration
 |   |-- app_battery_monitor/      # battery_monitor component migration
-|   |-- app_lightring_button/     # WS2812 ring and button app (no LVGL)
+|   |-- app_lightring_button/     # Private git submodule: WS2812 ring and button app (no LVGL)
 |   |-- app_lightring_button_2/   # RGB swoosh ring and button app
 |   `-- app_hairdryer/            # WS2812 output and button GPIO test
 |-- sdkconfig.defaults            # Common configuration
 `-- sdkconfig.<board>             # Generated per-board config (gitignored)
 ```
 
-The `lvgl/*` applications are tracked as git submodules; clone with
+The `lvgl/*` applications and `main/app_lightring_button` are tracked as git
+submodules; clone with
 `git clone --recurse-submodules`, or after cloning run
 `git submodule update --init --recursive`.
+
+The light ring button app is maintained in the private
+[`patrickz-philips/esp_app_lightring_button`](https://github.com/patrickz-philips/esp_app_lightring_button)
+repository on `main`. Cloning or updating this submodule requires authenticated
+read access. The parent repository pins a specific app commit.
 
 ## Key Dependencies
 
