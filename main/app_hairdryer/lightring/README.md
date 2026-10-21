@@ -3,8 +3,18 @@
 This self-contained component reproduces the six thermo/warm/hot high/low
 24-LED effects in the parent `export` directory. The logical layout is an
 8-LED inner ring plus a 16-LED outer ring, mapped to the physical WS2812 slots
-stored in the JSON files. The 2500 ms animation phase keeps running through
-every transition.
+stored in `Nairobi Device.ledsetting.json`.
+
+- THERMO uses the `thermo-*-blend-rotation.effect.json` files: a 4000 ms
+  rotation with linearly blended colors between each LED's 500 ms keyframes.
+  Low speed lights only the inner ring at brightness 255; high speed uses
+  brightness 80 for the inner ring and 200 for the outer ring.
+- HOT, WARM, and the independent cold effect retain their 2500 ms breathing
+  animation and existing palettes.
+
+Both THERMO speed variants have the same rotation period, matching the JSON.
+The shared phase wraps at 20000 ms (a common multiple of both periods), so
+neither effect jumps at the other's loop boundary.
 
 ## Public API
 
@@ -26,14 +36,18 @@ component, a redundant request, or while another transition is active.
 
 - `change_mode` blends to the new palette in 300 ms without resetting phase.
 - `high -> low` fades the outer ring into the inner ring in 300 ms.
-- `low -> high` waits until the low-speed inner ring reaches maximum
-  brightness, then blends to the high-speed inner-lit frame in 300 ms.
+- `low -> high` blends immediately in 300 ms for THERMO, preserving rotation
+  phase. Breathing effects still wait until the low-speed inner ring reaches
+  maximum brightness, then blend to the high-speed inner-lit frame in 300 ms.
 - `low/high -> off` switches to the low-speed base frame and breathes out to
   black in 300 ms.
 - `off -> low/high` breathes in to the requested speed in 300 ms.
 - `cold_on/off` blends the current effect to/from the independent blue cold
   palette in 300 ms. Releasing during `cold_on` reverses smoothly from the
   current blend instead of dropping the release.
+
+THERMO rotation phase keeps advancing during speed and on/off transitions.
+Cold retains its breathing brightness even when the selected mode is THERMO.
 
 The selected HOT/WARM/THERMO mode is retained while cold is enabled, so
 `cold_off` always returns to that mode. Query current state with `lightring_get_status()`,
@@ -89,5 +103,17 @@ cc -std=c11 -Wall -Wextra -Werror -I include \
 ```
 
 The test checks Nairobi-calibrated GRB bytes, the JSON-derived physical
-mapping, high/low/off endpoints, the cold palette, outer-ring collapse, and the
-low-to-high landing frame.
+mapping, rotation loop closure, high/low/off endpoints, the cold palette,
+outer-ring collapse, and the low-to-high landing frame.
+
+From this component directory, run the full JSON parity and transition check:
+
+```sh
+node test/test_json_parity.mjs
+```
+
+This compiles both the renderer and the controller (with host FreeRTOS stubs),
+compares all 24 calibrated pixels against the eight effect JSON files every
+10 ms through the shared 20000 ms cycle, and checks THERMO phase continuity,
+immediate low-to-high transitions, on/off transitions, and cold's wait-for-peak
+behavior. Temporary build files are removed automatically.

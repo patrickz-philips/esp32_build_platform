@@ -22,21 +22,44 @@ static const uint8_t s_color_group[LIGHTRING_LED_COUNT] = {
 };
 
 static const lr_color_t s_mode_colors[LIGHTRING_MODE_COUNT][3] = {
-    {
-        { 215U, 39U, 255U },
-        { 101U, 66U, 255U },
-        { 51U, 160U, 255U },
-    },
-    {
+    [LIGHTRING_MODE_HOT] = {
         { 255U, 64U, 64U },
         { 255U, 95U, 95U },
         { 255U, 123U, 123U },
     },
-    {
+    [LIGHTRING_MODE_WARM] = {
         { 231U, 174U, 0U },
         { 255U, 211U, 79U },
         { 221U, 189U, 91U },
     },
+};
+
+/* Exact 500 ms JSON keyframes in logical order; blue is always 255. */
+static const uint8_t s_thermo_rg[LIGHTRING_LED_COUNT][8][2] = {
+    { { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U } },
+    { { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U } },
+    { { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U } },
+    { { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U } },
+    { { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U } },
+    { { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U } },
+    { { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U } },
+    { { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U } },
+    { { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U } },
+    { { 147U, 55U }, { 89U, 90U }, { 64U, 137U }, { 68U, 129U }, { 101U, 66U }, { 158U, 53U }, { 196U, 44U }, { 192U, 44U } },
+    { { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U } },
+    { { 192U, 44U }, { 149U, 55U }, { 89U, 90U }, { 64U, 137U }, { 68U, 129U }, { 101U, 66U }, { 158U, 53U }, { 196U, 44U } },
+    { { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U } },
+    { { 196U, 44U }, { 192U, 44U }, { 149U, 55U }, { 89U, 90U }, { 64U, 137U }, { 68U, 129U }, { 101U, 66U }, { 158U, 53U } },
+    { { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U } },
+    { { 158U, 53U }, { 196U, 44U }, { 192U, 44U }, { 149U, 55U }, { 89U, 90U }, { 64U, 137U }, { 68U, 129U }, { 101U, 66U } },
+    { { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U }, { 84U, 97U } },
+    { { 101U, 66U }, { 158U, 53U }, { 196U, 44U }, { 192U, 44U }, { 147U, 55U }, { 89U, 90U }, { 64U, 137U }, { 68U, 129U } },
+    { { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U }, { 51U, 160U } },
+    { { 68U, 129U }, { 101U, 66U }, { 158U, 53U }, { 196U, 44U }, { 192U, 44U }, { 147U, 55U }, { 89U, 90U }, { 64U, 137U } },
+    { { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U }, { 76U, 113U } },
+    { { 64U, 137U }, { 68U, 129U }, { 101U, 66U }, { 158U, 53U }, { 196U, 44U }, { 192U, 44U }, { 147U, 55U }, { 89U, 90U } },
+    { { 76U, 113U }, { 51U, 160U }, { 84U, 97U }, { 139U, 57U }, { 177U, 48U }, { 215U, 39U }, { 169U, 50U }, { 101U, 66U } },
+    { { 89U, 90U }, { 64U, 137U }, { 68U, 129U }, { 101U, 66U }, { 158U, 53U }, { 196U, 44U }, { 192U, 44U }, { 147U, 55U } },
 };
 
 static const lr_color_t s_cold_colors[3] = {
@@ -65,13 +88,17 @@ static uint8_t linear_mix(uint8_t from, uint8_t to, uint32_t elapsed, uint32_t d
     return (uint8_t)((weighted + duration / 2U) / duration);
 }
 
-static uint8_t track_brightness(lightring_speed_t speed, int outer, uint32_t phase_ms)
+static uint8_t track_brightness(lightring_mode_t mode, lightring_speed_t speed,
+                                int outer, uint32_t phase_ms)
 {
     if (speed == LIGHTRING_SPEED_OFF) {
         return 0U;
     }
     if (speed == LIGHTRING_SPEED_LOW && outer) {
         return 0U;
+    }
+    if (mode == LIGHTRING_MODE_THERMO) {
+        return speed == LIGHTRING_SPEED_LOW ? 255U : (outer ? 200U : 80U);
     }
 
     uint8_t start;
@@ -100,20 +127,53 @@ static uint8_t track_brightness(lightring_speed_t speed, int outer, uint32_t pha
     return linear_mix(peak, start, phase_ms - 1900U, 600U);
 }
 
-static lr_color_t effect_color(const lightring_frame_t *frame, uint8_t group)
+static lr_color_t mix_color(lr_color_t from, lr_color_t to, uint8_t amount)
 {
-    const lr_color_t *from = &s_mode_colors[frame->from_mode][group];
-    const lr_color_t *to = &s_mode_colors[frame->to_mode][group];
-    const lr_color_t *cold = &s_cold_colors[group];
     lr_color_t color = {
-        .red = mix8(from->red, to->red, frame->mode_mix),
-        .green = mix8(from->green, to->green, frame->mode_mix),
-        .blue = mix8(from->blue, to->blue, frame->mode_mix),
+        .red = mix8(from.red, to.red, amount),
+        .green = mix8(from.green, to.green, amount),
+        .blue = mix8(from.blue, to.blue, amount),
     };
-    color.red = mix8(color.red, cold->red, frame->cold_mix);
-    color.green = mix8(color.green, cold->green, frame->cold_mix);
-    color.blue = mix8(color.blue, cold->blue, frame->cold_mix);
     return color;
+}
+
+static lr_color_t mode_color(lightring_mode_t mode, uint8_t logical,
+                              uint32_t phase_ms)
+{
+    if (mode != LIGHTRING_MODE_THERMO) {
+        return s_mode_colors[mode][s_color_group[logical]];
+    }
+    phase_ms %= LIGHTRING_THERMO_PERIOD_MS;
+    uint8_t key = (uint8_t)(phase_ms / 500U);
+    uint8_t next = (uint8_t)((key + 1U) % 8U);
+    const uint8_t *from = s_thermo_rg[logical][key];
+    const uint8_t *to = s_thermo_rg[logical][next];
+    lr_color_t color = {
+        .red = linear_mix(from[0], to[0], phase_ms % 500U, 500U),
+        .green = linear_mix(from[1], to[1], phase_ms % 500U, 500U),
+        .blue = 255U,
+    };
+    return color;
+}
+
+static lr_color_t effect_color(const lightring_frame_t *frame, uint8_t logical,
+                                uint32_t phase_ms)
+{
+    lr_color_t color = mix_color(
+        mode_color(frame->from_mode, logical, phase_ms),
+        mode_color(frame->to_mode, logical, phase_ms), frame->mode_mix);
+    return mix_color(color, s_cold_colors[s_color_group[logical]], frame->cold_mix);
+}
+
+static uint8_t effect_brightness(const lightring_frame_t *frame,
+                                 lightring_speed_t speed, int outer,
+                                 uint32_t phase_ms)
+{
+    uint8_t level = mix8(
+        track_brightness(frame->from_mode, speed, outer, phase_ms),
+        track_brightness(frame->to_mode, speed, outer, phase_ms), frame->mode_mix);
+    return mix8(level, track_brightness(LIGHTRING_MODE_HOT, speed, outer, phase_ms),
+                frame->cold_mix);
 }
 
 static uint8_t clamp_channel(int32_t value)
@@ -150,22 +210,24 @@ void lightring_render_frame(const lightring_frame_t *frame)
         return;
     }
 
-    uint8_t from_inner = track_brightness(
-        frame->from_speed, 0, frame->from_phase_ms);
-    uint8_t from_outer = track_brightness(
-        frame->from_speed, 1, frame->from_phase_ms);
-    uint8_t to_inner = track_brightness(
-        frame->to_speed, 0, frame->to_phase_ms);
-    uint8_t to_outer = track_brightness(
-        frame->to_speed, 1, frame->to_phase_ms);
+    uint8_t from_inner = effect_brightness(
+        frame, frame->from_speed, 0, frame->from_phase_ms);
+    uint8_t from_outer = effect_brightness(
+        frame, frame->from_speed, 1, frame->from_phase_ms);
+    uint8_t to_inner = effect_brightness(
+        frame, frame->to_speed, 0, frame->to_phase_ms);
+    uint8_t to_outer = effect_brightness(
+        frame, frame->to_speed, 1, frame->to_phase_ms);
 
     for (uint8_t logical = 0U; logical < LIGHTRING_LED_COUNT; ++logical) {
-        uint8_t group = s_color_group[logical];
         int outer = logical >= 8U;
         uint8_t from_level = outer ? from_outer : from_inner;
         uint8_t to_level = outer ? to_outer : to_inner;
         uint8_t level = mix8(from_level, to_level, frame->speed_mix);
-        lr_color_t color = calibrated_color(effect_color(frame, group), level);
+        lr_color_t color = mix_color(
+            effect_color(frame, logical, frame->from_phase_ms),
+            effect_color(frame, logical, frame->to_phase_ms), frame->speed_mix);
+        color = calibrated_color(color, level);
         uint16_t offset = (uint16_t)(s_logical_to_physical[logical] * 3U);
         lightring_framebuffer[offset] = color.green;
         lightring_framebuffer[offset + 1U] = color.red;

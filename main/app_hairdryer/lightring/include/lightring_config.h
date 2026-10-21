@@ -4,6 +4,9 @@
 
 #define LIGHTRING_LED_COUNT        24U
 #define LIGHTRING_EFFECT_PERIOD_MS 2500U
+#define LIGHTRING_THERMO_PERIOD_MS 4000U
+/* Common multiple keeps both effects continuous across phase wrap. */
+#define LIGHTRING_PHASE_PERIOD_MS  20000U
 #define LIGHTRING_TRANSITION_MS    300U
 #define LIGHTRING_FRAME_MS         10U
 

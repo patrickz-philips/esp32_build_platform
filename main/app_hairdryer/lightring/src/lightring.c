@@ -78,7 +78,12 @@ static bool valid_speed(lightring_speed_t speed)
 static uint32_t current_phase_ms(TickType_t now)
 {
     return (s_phase_base_ms + ticks_to_ms(now - s_phase_started)) %
-           LIGHTRING_EFFECT_PERIOD_MS;
+           LIGHTRING_PHASE_PERIOD_MS;
+}
+
+static bool rotation_active(void)
+{
+    return s_mode == LIGHTRING_MODE_THERMO && !s_cold;
 }
 
 static uint8_t transition_mix(TickType_t now)
@@ -143,14 +148,18 @@ static void complete_transition(TickType_t now, lr_transition_t transition)
         s_speed = LIGHTRING_SPEED_LOW;
     } else if (transition == LR_TRANSITION_SPEED_TO_HIGH) {
         s_speed = LIGHTRING_SPEED_HIGH;
-        s_phase_base_ms = LIGHTRING_TRANSITION_MS;
-        s_phase_started = now;
+        if (!rotation_active()) {
+            s_phase_base_ms = LIGHTRING_TRANSITION_MS;
+            s_phase_started = now;
+        }
     } else if (transition == LR_TRANSITION_SPEED_TO_OFF) {
         s_speed = LIGHTRING_SPEED_OFF;
     } else if (transition == LR_TRANSITION_OFF_TO_ACTIVE) {
         s_speed = s_target_speed;
-        s_phase_base_ms = 1000U;
-        s_phase_started = now;
+        if (!rotation_active()) {
+            s_phase_base_ms = 1000U;
+            s_phase_started = now;
+        }
     }
     s_transition = LR_TRANSITION_NONE;
     LR_EXIT_CRITICAL();
@@ -198,7 +207,8 @@ static void render_current_frame(TickType_t now)
     LR_EXIT_CRITICAL();
 
     if (transition == LR_TRANSITION_SPEED_WAIT_HIGH) {
-        if (phase_ms >= 1000U && phase_ms < 1900U) {
+        uint32_t breathe_phase_ms = phase_ms % LIGHTRING_EFFECT_PERIOD_MS;
+        if (breathe_phase_ms >= 1000U && breathe_phase_ms < 1900U) {
             begin_high_transition(now, phase_ms);
         }
     } else if (transition == LR_TRANSITION_MODE) {
@@ -215,8 +225,10 @@ static void render_current_frame(TickType_t now)
         }
     } else if (transition == LR_TRANSITION_SPEED_TO_HIGH) {
         uint32_t elapsed = ticks_to_ms(now - s_transition_started);
-        frame.from_phase_ms = s_speed_from_phase_ms;
-        frame.to_phase_ms = elapsed;
+        if (!rotation_active()) {
+            frame.from_phase_ms = s_speed_from_phase_ms;
+            frame.to_phase_ms = elapsed;
+        }
         frame.to_speed = LIGHTRING_SPEED_HIGH;
         frame.speed_mix = transition_mix(now);
         if (frame.speed_mix == 255U) {
@@ -229,8 +241,10 @@ static void render_current_frame(TickType_t now)
             complete_transition(now, transition);
         }
     } else if (transition == LR_TRANSITION_OFF_TO_ACTIVE) {
-        frame.from_phase_ms = 1000U;
-        frame.to_phase_ms = 1000U;
+        if (!rotation_active()) {
+            frame.from_phase_ms = 1000U;
+            frame.to_phase_ms = 1000U;
+        }
         frame.to_speed = s_target_speed;
         frame.speed_mix = breathe_mix(now);
         if (frame.speed_mix == 255U) {
@@ -361,15 +375,18 @@ int lightring_change_speed(lightring_speed_t speed)
     s_transition_started = now;
     if (speed == LIGHTRING_SPEED_OFF) {
         s_speed = LIGHTRING_SPEED_LOW;
-        s_phase_base_ms = 1000U;
-        s_phase_started = now;
+        if (!rotation_active()) {
+            s_phase_base_ms = 1000U;
+            s_phase_started = now;
+        }
         s_transition = LR_TRANSITION_SPEED_TO_OFF;
     } else if (s_speed == LIGHTRING_SPEED_OFF) {
         s_transition = LR_TRANSITION_OFF_TO_ACTIVE;
     } else if (speed == LIGHTRING_SPEED_LOW) {
         s_transition = LR_TRANSITION_SPEED_TO_LOW;
     } else {
-        s_transition = LR_TRANSITION_SPEED_WAIT_HIGH;
+        s_transition = rotation_active() ? LR_TRANSITION_SPEED_TO_HIGH
+                                          : LR_TRANSITION_SPEED_WAIT_HIGH;
     }
     LR_EXIT_CRITICAL();
     return 0;
